@@ -33,6 +33,7 @@ impl Display for Macro {
 
 #[derive(Debug)]
 pub struct ModuleMacro {
+    pub cost: usize,
     pub input_map: HashMap<String, usize>,
     pub output_map: HashMap<String, usize>,
     pub module_macro: Macro,
@@ -56,21 +57,32 @@ impl Display for ModuleMacro {
             .collect::<Vec<_>>()
             .join(", ");
 
-        writeln!(f, "/// Inputs: {inputs_str}, Outputs: {outputs_str}")?;
+        writeln!(
+            f,
+            "/// Cost: {}, Inputs: {inputs_str}, Outputs: {outputs_str}",
+            self.cost
+        )?;
         writeln!(f, "{}", self.module_macro)
     }
 }
 
 #[derive(Debug)]
 enum ExpressionInfo<'a> {
-    Implemented { text: String },
+    Implemented { text: String, cost: usize },
     Unimplemented { cell: &'a Cell },
 }
 
 impl<'a> ExpressionInfo<'a> {
     fn text(&self) -> Option<&str> {
         match self {
-            Self::Implemented { text } => Some(text),
+            Self::Implemented { text, cost: _ } => Some(text),
+            _ => None,
+        }
+    }
+
+    fn cost(&self) -> Option<usize> {
+        match self {
+            Self::Implemented { text: _, cost } => Some(*cost),
             _ => None,
         }
     }
@@ -96,6 +108,7 @@ pub fn build_module_macro(name: &str, module: &Module) -> ModuleMacro {
     }
 
     let mut module_macro = ModuleMacro {
+        cost: 0,
         input_map: HashMap::new(),
         output_map: HashMap::new(),
         module_macro: Macro {
@@ -115,17 +128,16 @@ pub fn build_module_macro(name: &str, module: &Module) -> ModuleMacro {
                 .inputs
                 .push(port_names.get(name).unwrap().to_string());
         } else {
+            let expr = exprs.get(port.bits.get(0).unwrap()).unwrap();
+
             module_macro
                 .output_map
                 .insert(name.to_string(), module_macro.module_macro.outputs.len());
-            module_macro.module_macro.outputs.push(
-                exprs
-                    .get(port.bits.get(0).unwrap())
-                    .unwrap()
-                    .text()
-                    .unwrap()
-                    .to_string(),
-            );
+            module_macro
+                .module_macro
+                .outputs
+                .push(expr.text().unwrap().to_string());
+            module_macro.cost += expr.cost().unwrap();
         }
     }
     module_macro
@@ -178,6 +190,7 @@ fn assign_inputs<'a>(
                 bit,
                 ExpressionInfo::Implemented {
                     text: port_names.get(name).unwrap().clone(),
+                    cost: 0,
                 },
             );
         }
@@ -267,5 +280,18 @@ fn implement_expr(expr_idx: usize, exprs: &mut IndexMap<usize, ExpressionInfo>) 
         x => unimplemented!("Cell type `{x}`"),
     };
 
-    *exprs.get_mut(&expr_idx).unwrap() = ExpressionInfo::Implemented { text };
+    let cost = cell
+        .port_directions
+        .iter()
+        .filter(|(_, dir)| **dir == PortDirection::Input)
+        .map(|(name, _)| {
+            exprs
+                .get(cell.connections.get(name).unwrap().get(0).unwrap())
+                .unwrap()
+                .cost()
+                .unwrap()
+        })
+        .sum::<usize>()
+        + 1;
+    *exprs.get_mut(&expr_idx).unwrap() = ExpressionInfo::Implemented { text, cost };
 }
