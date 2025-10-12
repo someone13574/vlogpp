@@ -36,3 +36,21 @@ pub struct Cell {
     pub port_directions: HashMap<String, PortDirection>,
     pub connections: HashMap<String, Vec<usize>>,
 }
+
+impl Cell {
+    pub fn input_connections(&self) -> impl Iterator<Item = usize> {
+        self.port_directions
+            .iter()
+            .filter(|(_, dir)| **dir == PortDirection::Input)
+            .flat_map(|(port_name, _)| self.connections.get(port_name).unwrap().iter())
+            .copied()
+    }
+
+    pub fn output_connections(&self) -> impl Iterator<Item = usize> {
+        self.port_directions
+            .iter()
+            .filter(|(_, dir)| **dir == PortDirection::Output)
+            .flat_map(|(port_name, _)| self.connections.get(port_name).unwrap().iter())
+            .copied()
+    }
+}

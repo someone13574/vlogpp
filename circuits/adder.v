@@ -1,9 +1,11 @@
 module adder (
-    input  [3:0] a,
-    input  [3:0] b,
-    output [4:0] out
+    input a,
+    input b,
+    input c,
+    output [1:0] out
 );
 
-    assign out = a + b;
+    assign out[0] = (a ^ b) & c;
+    assign out[1] = (a ^ b) | c;
 
 endmodule

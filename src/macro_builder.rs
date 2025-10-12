@@ -68,21 +68,54 @@ impl Display for ModuleMacro {
 
 #[derive(Debug)]
 enum ExpressionInfo<'a> {
-    Implemented { text: String, cost: usize },
-    Unimplemented { cell: &'a Cell },
+    Implemented {
+        text: String,
+        cost: usize,
+        split_idx: usize,
+        split_var: Option<String>,
+    },
+    Unimplemented {
+        cell: &'a Cell,
+    },
 }
 
 impl<'a> ExpressionInfo<'a> {
-    fn text(&self) -> Option<&str> {
+    fn text(&self, downstream: bool) -> Option<&str> {
         match self {
-            Self::Implemented { text, cost: _ } => Some(text),
+            Self::Implemented {
+                text, split_var, ..
+            } => {
+                if downstream && split_var.is_some() {
+                    Some(split_var.as_ref().unwrap().as_str())
+                } else {
+                    Some(text.as_str())
+                }
+            }
             _ => None,
         }
     }
 
     fn cost(&self) -> Option<usize> {
         match self {
-            Self::Implemented { text: _, cost } => Some(*cost),
+            Self::Implemented { cost, .. } => Some(*cost),
+            _ => None,
+        }
+    }
+
+    fn split_idx(&self, downstream: bool) -> Option<usize> {
+        match self {
+            Self::Implemented {
+                split_idx,
+                split_var,
+                ..
+            } => Some(
+                *split_idx
+                    + if downstream && split_var.is_some() {
+                        1
+                    } else {
+                        0
+                    },
+            ),
             _ => None,
         }
     }
@@ -100,12 +133,16 @@ pub fn build_module_macro(name: &str, module: &Module) -> ModuleMacro {
     let mut exprs = assign_inputs(module, &port_names);
     collect_cell_outputs(module, &mut exprs);
 
+    let consumer_counts = count_consumers(module);
+
     for idx in 0..exprs.len() {
         let (&expr_idx, _) = exprs.get_index(idx).unwrap();
         while let Some(implementable_expr_idx) = get_implementable_cell(expr_idx, &exprs) {
-            implement_expr(implementable_expr_idx, &mut exprs);
+            implement_expr(implementable_expr_idx, &mut exprs, &consumer_counts);
         }
     }
+
+    println!("{exprs:#?}");
 
     let mut module_macro = ModuleMacro {
         cost: 0,
@@ -136,7 +173,7 @@ pub fn build_module_macro(name: &str, module: &Module) -> ModuleMacro {
             module_macro
                 .module_macro
                 .outputs
-                .push(expr.text().unwrap().to_string());
+                .push(expr.text(false).unwrap().to_string());
             module_macro.cost += expr.cost().unwrap();
         }
     }
@@ -191,6 +228,8 @@ fn assign_inputs<'a>(
                 ExpressionInfo::Implemented {
                     text: port_names.get(name).unwrap().clone(),
                     cost: 0,
+                    split_idx: 0,
+                    split_var: None,
                 },
             );
         }
@@ -219,6 +258,34 @@ fn collect_cell_outputs<'a>(
     }
 }
 
+fn count_consumers(module: &Module) -> HashMap<usize, usize> {
+    let mut num_consumers = HashMap::new();
+    for &connection in module
+        .ports
+        .iter()
+        .filter(|(_, port)| port.direction == PortDirection::Output)
+        .flat_map(|(_, port)| port.bits.iter())
+    {
+        num_consumers
+            .entry(connection)
+            .and_modify(|count| *count += 1)
+            .or_insert(1);
+    }
+
+    for connection in module
+        .cells
+        .iter()
+        .flat_map(|(_, cell)| cell.input_connections())
+    {
+        num_consumers
+            .entry(connection)
+            .and_modify(|count| *count += 1)
+            .or_insert(1);
+    }
+
+    num_consumers
+}
+
 fn expr_implemented(connection: usize, exprs: &IndexMap<usize, ExpressionInfo>) -> bool {
     let expr = exprs.get(&connection).unwrap();
     matches!(expr, ExpressionInfo::Implemented { .. })
@@ -237,22 +304,17 @@ fn get_implementable_cell<'a, 'b>(
 
     // Check if implementable
     let cell = expr.cell().unwrap();
-    let input_ports = cell
-        .port_directions
-        .iter()
-        .filter(|(_, dir)| **dir == PortDirection::Input)
-        .flat_map(|(name, _)| cell.connections.get(name).unwrap().iter())
-        .collect::<HashSet<_>>();
+    let input_ports = cell.input_connections().collect::<HashSet<_>>();
 
     if input_ports
         .iter()
-        .all(|connection| expr_implemented(**connection, exprs))
+        .all(|connection| expr_implemented(*connection, exprs))
     {
         return Some(connection);
     }
 
     // Check children
-    for &connection in input_ports {
+    for connection in input_ports {
         if let Some(implementable) = get_implementable_cell(connection, exprs) {
             return Some(implementable);
         }
@@ -261,37 +323,54 @@ fn get_implementable_cell<'a, 'b>(
     unreachable!();
 }
 
-fn implement_expr(expr_idx: usize, exprs: &mut IndexMap<usize, ExpressionInfo>) {
+fn implement_expr(
+    expr_idx: usize,
+    exprs: &mut IndexMap<usize, ExpressionInfo>,
+    consumer_counts: &HashMap<usize, usize>,
+) {
     let cell = exprs.get(&expr_idx).unwrap().cell().unwrap();
-    let inputs = cell
+
+    let mut input_text = HashMap::new();
+    let mut cost = 1;
+
+    for (port_name, _dir) in cell
         .port_directions
         .iter()
         .filter(|(_, dir)| **dir == PortDirection::Input)
-        .map(|(name, _)| {
-            let id = cell.connections.get(name).unwrap().get(0).unwrap();
-            (name.as_str(), exprs.get(id).unwrap().text().unwrap())
-        })
-        .collect::<HashMap<&str, &str>>();
+    {
+        let connections = cell.connections.get(port_name).unwrap();
+        assert_eq!(connections.len(), 1);
+
+        let expr = exprs.get(connections.get(0).unwrap()).unwrap();
+        input_text.insert(port_name.as_str(), expr.text(true).unwrap());
+        cost += expr.cost().unwrap();
+    }
 
     let text = match cell.kind.as_str() {
-        AND_GATE_NAME => implement_and(inputs),
-        OR_GATE_NAME => implement_or(inputs),
-        XOR_GATE_NAME => implement_xor(inputs),
+        AND_GATE_NAME => implement_and(input_text),
+        OR_GATE_NAME => implement_or(input_text),
+        XOR_GATE_NAME => implement_xor(input_text),
         x => unimplemented!("Cell type `{x}`"),
     };
 
-    let cost = cell
-        .port_directions
-        .iter()
-        .filter(|(_, dir)| **dir == PortDirection::Input)
-        .map(|(name, _)| {
-            exprs
-                .get(cell.connections.get(name).unwrap().get(0).unwrap())
-                .unwrap()
-                .cost()
-                .unwrap()
-        })
-        .sum::<usize>()
-        + 1;
-    *exprs.get_mut(&expr_idx).unwrap() = ExpressionInfo::Implemented { text, cost };
+    let consumer_counts = *consumer_counts.get(&expr_idx).unwrap();
+    let split_idx = determine_split_idx(cell, &exprs);
+
+    *exprs.get_mut(&expr_idx).unwrap() = ExpressionInfo::Implemented {
+        text,
+        cost,
+        split_idx,
+        split_var: if consumer_counts > 1 {
+            Some(format!("temp_var_{expr_idx}"))
+        } else {
+            None
+        },
+    };
+}
+
+fn determine_split_idx(cell: &Cell, exprs: &IndexMap<usize, ExpressionInfo>) -> usize {
+    cell.input_connections()
+        .map(|idx| exprs.get(&idx).unwrap().split_idx(true).unwrap())
+        .max()
+        .unwrap_or(0)
 }

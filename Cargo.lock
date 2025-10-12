@@ -33,16 +33,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
-name = "macros-are-fun"
-version = "0.1.0"
-dependencies = [
- "indexmap",
- "ordermap",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -142,3 +132,13 @@ name = "unicode-ident"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f63a545481291138910575129486daeaf8ac54aee4387fe7906919f7830c7d9d"
+
+[[package]]
+name = "vlogpp"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "ordermap",
+ "serde",
+ "serde_json",
+]
