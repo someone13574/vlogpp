@@ -9,6 +9,7 @@ use crate::{
     gates::{
         AND_GATE_NAME, OR_GATE_NAME, XOR_GATE_NAME, implement_and, implement_or, implement_xor,
     },
+    names::{GlobalNames, LocalNames},
     yosys::{Cell, Module, PortDirection},
 };
 
@@ -159,8 +160,14 @@ struct UnimplementedExpr<'a> {
     cell: &'a Cell,
 }
 
-pub fn build_module_macro(name: &str, module: &Module) -> ModuleMacro {
-    let port_names = assign_port_names(module);
+pub fn build_module_macro(
+    name: &str,
+    module: &Module,
+    global_names: &mut GlobalNames,
+) -> ModuleMacro {
+    let mut local_names = LocalNames::new();
+
+    let port_names = assign_port_names(module, &mut local_names);
     let mut split_var_exprs = HashMap::new();
     let mut imp_exprs = assign_inputs(module, &port_names);
     let mut unimp_exprs = collect_cell_outputs(module);
@@ -178,6 +185,7 @@ pub fn build_module_macro(name: &str, module: &Module) -> ModuleMacro {
                 &mut unimp_exprs,
                 &consumer_counts,
                 &mut split_var_exprs,
+                &mut local_names,
             );
         }
     }
@@ -201,15 +209,11 @@ pub fn build_module_macro(name: &str, module: &Module) -> ModuleMacro {
         splits: (0..num_splits)
             .into_iter()
             .map(|idx| Macro {
-                name: if idx == 0 {
-                    name.to_string()
-                } else {
-                    format!("_{name}_SPLIT_{idx}")
-                },
+                name: global_names.get_split(name, idx),
                 inputs: Vec::new(),
                 outputs: Vec::new(),
                 wrapper: if idx + 1 != num_splits {
-                    Some(format!("_{name}_SPLIT_{}", idx + 1))
+                    Some(global_names.get_split(name, idx + 1))
                 } else {
                     None
                 },
@@ -251,31 +255,12 @@ pub fn build_module_macro(name: &str, module: &Module) -> ModuleMacro {
 }
 
 /// Creates a mapping from original port names to macro port names
-fn assign_port_names(module: &Module) -> HashMap<String, String> {
+fn assign_port_names(module: &Module, local_names: &mut LocalNames) -> HashMap<String, String> {
     let mut port_map = HashMap::new();
 
     // Assign non-indexed
-    for (port, _) in module.ports.iter().filter(|(name, _)| !name.contains("[")) {
-        port_map.insert(port.to_string(), port.to_string());
-    }
-
-    // Repeatedly attempt to use different separators until no conflicts with non-indexed ports are found
-    let mut separator = String::new();
-    loop {
-        let mut index_ports_map = HashMap::new();
-        for (port, _) in module.ports.iter().filter(|(name, _)| name.contains("[")) {
-            let mapped_name = port.replace("]", "").replace("[", &separator);
-            index_ports_map.insert(port.to_string(), mapped_name.clone());
-
-            if module.ports.contains_key(&mapped_name) {
-                separator = format!("{separator}_");
-                continue;
-            }
-        }
-
-        // No conflicts found
-        port_map.extend(index_ports_map);
-        break;
+    for (port, _) in &module.ports {
+        port_map.insert(port.to_string(), local_names.add_input(port));
     }
 
     port_map
@@ -394,6 +379,7 @@ fn implement_expr(
     unimp_exprs: &mut HashMap<usize, UnimplementedExpr>,
     consumer_counts: &HashMap<usize, usize>,
     split_var_exprs: &mut HashMap<String, usize>,
+    local_names: &mut LocalNames,
 ) {
     let cell = unimp_exprs.get(&unimp_expr_idx).unwrap().cell;
 
@@ -437,8 +423,9 @@ fn implement_expr(
             cost,
             split_idx,
             split_var: if consumer_counts > 1 {
-                split_var_exprs.insert(format!("tmp{unimp_expr_idx}"), unimp_expr_idx);
-                Some(format!("tmp{unimp_expr_idx}"))
+                let tmp = local_names.get_temp();
+                split_var_exprs.insert(tmp.clone(), unimp_expr_idx);
+                Some(tmp)
             } else {
                 None
             },
