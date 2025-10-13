@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     fmt::{self, Display},
 };
 
@@ -191,6 +191,8 @@ pub fn build_module_macro(name: &str, module: &Module) -> ModuleMacro {
         .max()
         .unwrap_or_default()
         + 1;
+
+    defer_split_indices(num_splits, &mut imp_exprs, &mut split_var_exprs);
 
     let mut module_macro = ModuleMacro {
         cost: num_splits - 1,
@@ -435,8 +437,8 @@ fn implement_expr(
             cost,
             split_idx,
             split_var: if consumer_counts > 1 {
-                split_var_exprs.insert(format!("temp_var_{unimp_expr_idx}"), unimp_expr_idx);
-                Some(format!("temp_var_{unimp_expr_idx}"))
+                split_var_exprs.insert(format!("tmp{unimp_expr_idx}"), unimp_expr_idx);
+                Some(format!("tmp{unimp_expr_idx}"))
             } else {
                 None
             },
@@ -452,4 +454,98 @@ fn determine_split_idx(cell: &Cell, exprs: &HashMap<usize, ImplementedExpr>) -> 
         .map(|idx| exprs.get(&idx).unwrap().downstream_split_idx())
         .max()
         .unwrap_or(0)
+}
+
+fn defer_split_indices(
+    num_splits: usize,
+    exprs: &mut HashMap<usize, ImplementedExpr>,
+    split_var_exprs: &mut HashMap<String, usize>,
+) {
+    if num_splits < 3 || exprs.is_empty() {
+        return;
+    }
+
+    // Build adjacency
+    let mut children = HashMap::new();
+    let mut incoming = HashMap::new();
+    for expr_idx in exprs.keys() {
+        children.insert(expr_idx, Vec::new());
+        incoming.insert(expr_idx, 0);
+    }
+
+    for (consumer_idx, ImplementedExpr { input_vars, .. }) in exprs.iter() {
+        for var in input_vars {
+            if let Some(producer_idx) = split_var_exprs.get(var) {
+                children.get_mut(producer_idx).unwrap().push(*consumer_idx);
+                *incoming.get_mut(consumer_idx).unwrap() += 1;
+            }
+        }
+    }
+
+    // Topo sort
+    let mut queue = VecDeque::new();
+    for (&&expr_idx, &degree) in &incoming {
+        // Get outputs
+        if degree == 0 {
+            queue.push_back(expr_idx);
+        }
+    }
+
+    let mut topo = Vec::new();
+    while let Some(expr_idx) = queue.pop_front() {
+        topo.push(expr_idx);
+        if let Some(expr_children) = children.get(&expr_idx) {
+            for child in expr_children {
+                let degree = incoming.get_mut(child).unwrap();
+                *degree -= 1;
+                if *degree == 0 {
+                    queue.push_back(*child);
+                }
+            }
+        }
+    }
+
+    assert_eq!(topo.len(), exprs.len());
+
+    // Compute upper bound splits
+    let mut upper_bounds = HashMap::new();
+    for expr_idx in &topo {
+        upper_bounds.insert(
+            *expr_idx,
+            if exprs.get(expr_idx).unwrap().cost == 0 {
+                // Inputs must be in split 0
+                0
+            } else {
+                num_splits - 1
+            },
+        );
+    }
+
+    for expr_idx in topo.iter().rev() {
+        if let Some(expr_children) = children.get(&expr_idx) {
+            for child in expr_children {
+                let delta = if exprs.get(expr_idx).unwrap().split_var.is_some() {
+                    // Split must decrease if a temp var
+                    1
+                } else {
+                    0
+                };
+
+                let child_upper_bound = upper_bounds.get(child).copied().unwrap_or(num_splits - 1);
+                let candidate = child_upper_bound.saturating_sub(delta);
+                if candidate
+                    < upper_bounds
+                        .get(expr_idx)
+                        .copied()
+                        .unwrap_or(num_splits - 1)
+                {
+                    upper_bounds.insert(*expr_idx, candidate);
+                }
+            }
+        }
+    }
+
+    for (idx, expr) in exprs.iter_mut() {
+        expr.split_idx = upper_bounds.get(idx).copied().unwrap_or(num_splits - 1);
+    }
 }
