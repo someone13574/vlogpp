@@ -10,5 +10,5 @@ yosys -p "
     rmports
     splitnets -ports
     clean -purge
-    show -stretch
+    show -stretch -format ps -viewer evince
     write_json design.json"
