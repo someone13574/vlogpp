@@ -14,6 +14,7 @@ pub struct GlobalScope {
     next_macro_id: MacroID,
     next_scope_id: LocalScopeID,
 
+    pub defines: OrderMap<String, String>,
     pub macros: OrderMap<MacroID, Macro>,
     pub scopes: HashMap<LocalScopeID, LocalScope>,
 
@@ -27,6 +28,7 @@ impl GlobalScope {
             verilog,
             next_macro_id: MacroID(0),
             next_scope_id: LocalScopeID(0),
+            defines: OrderMap::new(),
             macros: OrderMap::new(),
             scopes: HashMap::new(),
             modules: HashMap::new(),
@@ -72,7 +74,36 @@ impl GlobalScope {
         id
     }
 
-    pub fn new_macro(&mut self, name: &str, body: ExprID, scope_id: LocalScopeID) -> MacroID {
+    pub fn get_macro_prefix(&self, name: &str) -> String {
+        let mut prefix;
+        let mut suffix = None;
+
+        while {
+            prefix = if let Some(suffix) = suffix {
+                format!("{}__{suffix}", name.to_uppercase())
+            } else {
+                name.to_uppercase()
+            };
+
+            self.macros
+                .values()
+                .map(|r#macro| &r#macro.name)
+                .chain(self.defines.values())
+                .any(|name| name.starts_with(&prefix))
+        } {
+            suffix = Some(suffix.map_or(0, |x| x + 1));
+        }
+
+        prefix
+    }
+
+    pub fn new_macro(
+        &mut self,
+        name: &str,
+        body: ExprID,
+        inputs: Vec<VarID>,
+        scope_id: LocalScopeID,
+    ) -> MacroID {
         let mut alias;
         let mut suffix = None;
 
@@ -83,7 +114,11 @@ impl GlobalScope {
                 name.to_uppercase()
             };
 
-            self.macros.values().any(|existing| existing.name == alias)
+            self.macros
+                .values()
+                .map(|r#macro| &r#macro.name)
+                .chain(self.defines.values())
+                .any(|name| *name == alias)
         } {
             suffix = Some(suffix.map_or(0, |x| x + 1));
         }
@@ -98,6 +133,7 @@ impl GlobalScope {
                 scope_id,
                 name: alias,
                 body,
+                inputs,
             },
         );
         id
@@ -120,10 +156,10 @@ impl GlobalScope {
             .collect::<Vec<_>>();
         let (content, wrapper) = if expand {
             let exprs = vars
-                .into_iter()
+                .iter()
                 .map(|var| {
                     self.get_mut_scope(scope_id)
-                        .new_expr(ExprContent::Var(var), None)
+                        .new_expr(ExprContent::Var(*var), None)
                 })
                 .collect::<Vec<_>>();
             (
@@ -131,13 +167,14 @@ impl GlobalScope {
                 Some(self.paste_macro(num_inputs, false)),
             )
         } else {
-            (ExprContent::Concat(vars), None)
+            (ExprContent::Concat(vars.clone()), None)
         };
 
         let body = self.get_mut_scope(scope_id).new_expr(content, wrapper);
         let macro_id = self.new_macro(
             &format!("PASTE_{}{num_inputs}", if expand { "EXPAND_" } else { "" }),
             body,
+            vars,
             scope_id,
         );
 
@@ -148,6 +185,10 @@ impl GlobalScope {
 
 impl Display for GlobalScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (key, value) in self.defines.iter() {
+            writeln!(f, "#define {key} {value}")?;
+        }
+
         for r#macro in self.macros.values() {
             writeln!(f, "{}", r#macro.emit(self))?;
         }

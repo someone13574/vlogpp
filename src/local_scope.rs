@@ -33,7 +33,7 @@ impl LocalScope {
             alias = if let Some(suffix) = suffix {
                 format!("{}__{suffix}", name.to_lowercase())
             } else {
-                name.to_uppercase()
+                name.to_lowercase()
             };
 
             self.vars.values().any(|existing| existing.name == alias)
