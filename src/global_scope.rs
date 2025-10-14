@@ -6,10 +6,11 @@ use ordermap::OrderMap;
 use crate::expr::{Expr, ExprContent, ExprID, Var, VarID};
 use crate::local_scope::{LocalScope, LocalScopeID};
 use crate::r#macro::{Macro, MacroID};
+use crate::module::create_module;
 use crate::yosys::Yosys;
 
 pub struct GlobalScope {
-    pub verilog: Yosys,
+    pub yosys: Yosys,
 
     next_macro_id: MacroID,
     next_scope_id: LocalScopeID,
@@ -23,9 +24,9 @@ pub struct GlobalScope {
 }
 
 impl GlobalScope {
-    pub fn new(verilog: Yosys) -> Self {
+    pub fn new(yosys: Yosys) -> Self {
         Self {
-            verilog,
+            yosys,
             next_macro_id: MacroID(0),
             next_scope_id: LocalScopeID(0),
             defines: OrderMap::new(),
@@ -40,6 +41,12 @@ impl GlobalScope {
 impl GlobalScope {
     pub fn get_scope(&self, scope_id: LocalScopeID) -> &LocalScope {
         self.scopes.get(&scope_id).unwrap()
+    }
+
+    pub fn get_macro_scope(&self, macro_id: MacroID) -> &LocalScope {
+        self.scopes
+            .get(&self.macros.get(&macro_id).unwrap().scope_id)
+            .unwrap()
     }
 
     pub fn get_var(&self, var_id: VarID, scope_id: LocalScopeID) -> &Var {
@@ -69,6 +76,8 @@ impl GlobalScope {
                 next_expr_id: ExprID(0),
                 vars: HashMap::new(),
                 exprs: HashMap::new(),
+                input_map: HashMap::new(),
+                output_names: None,
             },
         );
         id
@@ -80,9 +89,9 @@ impl GlobalScope {
 
         while {
             prefix = if let Some(suffix) = suffix {
-                format!("{}__{suffix}", name.to_uppercase())
+                format!("{}__{suffix}", preprocess_macro_name(name))
             } else {
-                name.to_uppercase()
+                preprocess_macro_name(name)
             };
 
             self.macros
@@ -97,6 +106,18 @@ impl GlobalScope {
         prefix
     }
 
+    pub fn get_module(&mut self, name: &str) -> Option<MacroID> {
+        if let Some(id) = self.modules.get(name) {
+            Some(*id)
+        } else {
+            let Some(module) = self.yosys.modules.get(name).cloned() else {
+                return None;
+            };
+
+            Some(create_module(name, &module, self))
+        }
+    }
+
     pub fn new_macro(
         &mut self,
         name: &str,
@@ -109,9 +130,9 @@ impl GlobalScope {
 
         while {
             alias = if let Some(suffix) = suffix {
-                format!("{}__{suffix}", name.to_uppercase())
+                format!("{}__{suffix}", preprocess_macro_name(name))
             } else {
-                name.to_uppercase()
+                preprocess_macro_name(name)
             };
 
             self.macros
@@ -152,7 +173,7 @@ impl GlobalScope {
         let vars = ('a'..='z')
             .into_iter()
             .take(num_inputs)
-            .map(|x| self.get_mut_scope(scope_id).new_var(&x.to_string()))
+            .map(|x| self.get_mut_scope(scope_id).new_var(&x.to_string(), false))
             .collect::<Vec<_>>();
         let (content, wrapper) = if expand {
             let exprs = vars
@@ -195,4 +216,11 @@ impl Display for GlobalScope {
 
         Ok(())
     }
+}
+
+fn preprocess_macro_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .map(|c| c.to_ascii_uppercase())
+        .collect::<String>()
 }
