@@ -4,16 +4,23 @@ use crate::expr::ExprContent;
 use crate::global_scope::GlobalScope;
 use crate::r#macro::MacroID;
 
-pub fn new_lut_primitive(name: &str, outputs: &[bool], global_scope: &mut GlobalScope) -> MacroID {
+pub fn new_lut_primitive(
+    name: &str,
+    input_names: &[&str],
+    output_name: &str,
+    outputs: &[bool],
+    global_scope: &mut GlobalScope,
+) -> MacroID {
     assert!(outputs.len() >= 4 && outputs.len().is_power_of_two());
     let num_inputs = outputs.len().ilog2() as usize;
+    assert_eq!(num_inputs, input_names.len());
 
     let scope_id = global_scope.new_local_scope();
-    let vars = ('a'..='z')
-        .into_iter()
-        .take(num_inputs)
-        .map(|x| global_scope.get_mut_scope(scope_id).new_var(&x.to_string()))
+    let vars = input_names
+        .iter()
+        .map(|x| global_scope.get_mut_scope(scope_id).new_var(x, true))
         .collect::<Vec<_>>();
+    global_scope.get_mut_scope(scope_id).output_names = Some(vec![output_name.to_string()]);
 
     let paste_macro = global_scope.paste_macro(num_inputs + 1, true);
     let prefix = global_scope.get_macro_prefix(name);

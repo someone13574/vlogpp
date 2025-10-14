@@ -12,6 +12,9 @@ pub struct LocalScope {
 
     pub vars: HashMap<VarID, Var>,
     pub exprs: HashMap<ExprID, Expr>,
+
+    pub input_map: HashMap<String, VarID>,
+    pub output_names: Option<Vec<String>>,
 }
 
 impl LocalScope {
@@ -25,15 +28,15 @@ impl LocalScope {
 }
 
 impl LocalScope {
-    pub fn new_var(&mut self, name: &str) -> VarID {
+    pub fn new_var(&mut self, name: &str, map_input: bool) -> VarID {
         let mut alias;
         let mut suffix = None;
 
         while {
             alias = if let Some(suffix) = suffix {
-                format!("{}__{suffix}", name.to_lowercase())
+                format!("{}__{suffix}", preprocess_var_name(name))
             } else {
-                name.to_lowercase()
+                preprocess_var_name(name)
             };
 
             self.vars.values().any(|existing| existing.name == alias)
@@ -43,8 +46,11 @@ impl LocalScope {
 
         let id = self.next_var_id;
         self.next_var_id.0 += 1;
-
         self.vars.insert(id, Var { id, name: alias });
+        if map_input {
+            assert_eq!(self.input_map.insert(name.to_string(), id), None);
+        }
+
         id
     }
 
@@ -62,4 +68,11 @@ impl LocalScope {
         );
         id
     }
+}
+
+fn preprocess_var_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .map(|c| c.to_ascii_lowercase())
+        .collect::<String>()
 }

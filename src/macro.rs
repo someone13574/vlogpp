@@ -16,6 +16,12 @@ pub struct Macro {
 }
 
 impl Macro {
+    pub fn input_position(&self, name: &str, global_scope: &GlobalScope) -> Option<usize> {
+        let local_scope = global_scope.get_scope(self.scope_id);
+        let var_id = local_scope.input_map.get(name).unwrap();
+        self.inputs.iter().position(|input| input == var_id)
+    }
+
     pub fn emit(&self, global_scope: &GlobalScope) -> String {
         let local_scope = global_scope.get_scope(self.scope_id);
         format!(
