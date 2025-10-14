@@ -1,22 +1,21 @@
 use std::fs;
 
-use crate::{macro_builder::build_module_macro, names::GlobalNames, yosys::Yosys};
+use crate::{scope::GlobalScope, yosys::Yosys};
 
+pub mod expr;
 pub mod gates;
+pub mod r#macro;
 pub mod macro_builder;
 pub mod names;
+pub mod primitives;
+pub mod scope;
 pub mod yosys;
 
 fn main() {
-    let mut global_names = GlobalNames::new();
+    let yosys = serde_json::from_str::<Yosys>(&fs::read_to_string("design.json").unwrap()).unwrap();
+    let mut global_scope = GlobalScope::new(yosys);
+    global_scope.get_paste_macro(5, true);
+    global_scope.get_paste_macro(2, false);
 
-    let design =
-        serde_json::from_str::<Yosys>(&fs::read_to_string("design.json").unwrap()).unwrap();
-    let module = build_module_macro(
-        "adder",
-        design.modules.get("adder").unwrap(),
-        &mut global_names,
-    );
-
-    println!("{module}");
+    println!("{}", global_scope);
 }
