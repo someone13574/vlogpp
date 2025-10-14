@@ -1,4 +1,4 @@
-use crate::expr::ExprID;
+use crate::expr::{ExprID, VarID};
 use crate::global_scope::GlobalScope;
 use crate::local_scope::LocalScopeID;
 
@@ -12,14 +12,20 @@ pub struct Macro {
 
     pub name: String,
     pub body: ExprID,
+    pub inputs: Vec<VarID>,
 }
 
 impl Macro {
     pub fn emit(&self, global_scope: &GlobalScope) -> String {
         let local_scope = global_scope.get_scope(self.scope_id);
         format!(
-            "{}(...) {}",
+            "#define {}({}) {}",
             self.name,
+            self.inputs
+                .iter()
+                .map(|input| format!("{}", local_scope.get_var(*input)))
+                .collect::<Vec<_>>()
+                .join(", "),
             local_scope
                 .get_expr(self.body)
                 .emit(global_scope, local_scope)
