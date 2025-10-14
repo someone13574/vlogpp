@@ -1,9 +1,8 @@
 use std::fmt::{self, Display};
 
-use crate::{
-    r#macro::MacroID,
-    scope::{GlobalScope, LocalScope},
-};
+use crate::global_scope::GlobalScope;
+use crate::local_scope::LocalScope;
+use crate::r#macro::MacroID;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct VarID(pub usize);
@@ -39,7 +38,7 @@ impl Expr {
     pub fn emit(&self, global_scope: &GlobalScope, local_scope: &LocalScope) -> String {
         let content = match &self.content {
             ExprContent::Var(var_id) => {
-                format!("{}", local_scope.get_var(var_id))
+                format!("{}", local_scope.get_var(*var_id))
             }
             ExprContent::Text(text) => {
                 format!("{text}")
@@ -53,7 +52,7 @@ impl Expr {
                             format!(
                                 "{}",
                                 local_scope
-                                    .get_expr(expr_id)
+                                    .get_expr(*expr_id)
                                     .emit(global_scope, local_scope)
                             )
                         })
@@ -66,7 +65,7 @@ impl Expr {
                     "{}",
                     var_ids
                         .iter()
-                        .map(|var_id| { format!("{}", local_scope.get_var(var_id)) })
+                        .map(|var_id| { format!("{}", local_scope.get_var(*var_id)) })
                         .collect::<Vec<_>>()
                         .join("##")
                 )
