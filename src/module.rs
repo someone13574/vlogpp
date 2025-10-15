@@ -11,6 +11,7 @@ use crate::yosys::{Cell, Module, Wire};
 #[derive(Debug, Clone)]
 struct WireInfo {
     pub input_var: Option<VarID>,
+
     pub expr: Option<ExprID>,
     pub downstream_expr: Option<ExprID>,
     pub bundled_expr: Option<(VarID, ExprID, usize)>,
@@ -82,26 +83,46 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
 
     for &cell_idx in &cell_topo {
         let (_cell_name, cell) = module.cells.get_index(cell_idx).unwrap();
-        let call_module = global_scope.get_module(&cell.kind).unwrap();
+        let call_module = global_scope
+            .get_module(&cell.kind)
+            .expect(&format!("Unknown cell type `{}`", &cell.kind));
 
-        let mut input_wires = cell.input_connections().collect::<Vec<_>>();
-        input_wires.sort_by_key(|(name, _)| {
-            global_scope
-                .macros
-                .get(&call_module)
-                .unwrap()
-                .input_position(name, global_scope)
-                .unwrap()
-        });
+        let mut input_wires = cell
+            .input_connections()
+            .map(|(name, wire)| {
+                (
+                    wire,
+                    global_scope
+                        .macros
+                        .get(&call_module)
+                        .unwrap()
+                        .input_position(name, global_scope)
+                        .unwrap(),
+                )
+            })
+            .collect::<Vec<_>>();
+        add_reg_macro_prev_output(&mut input_wires, cell, call_module, global_scope, module);
+
+        input_wires.sort_by_key(|(_, idx)| *idx);
+        global_scope
+            .macros
+            .get(&call_module)
+            .unwrap()
+            .check_inputs(
+                input_wires.iter().map(|(_, idx)| *idx).collect(),
+                global_scope,
+            )
+            .unwrap();
+
         let split_idx_lb = input_wires
             .iter()
-            .map(|(_name, wire)| wire_infos.get(wire).unwrap().downstream_split_idx_lb())
+            .map(|(wire, _)| wire_infos.get(wire).unwrap().downstream_split_idx_lb())
             .max()
             .unwrap();
 
         let input_exprs = input_wires
             .iter()
-            .map(|(_name, wire)| {
+            .map(|(wire, _)| {
                 wire_infos
                     .get(wire)
                     .unwrap()
@@ -141,7 +162,7 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
             wire_info.split_idx_lb = Some(split_idx_lb);
             wire_info
                 .input_wires
-                .extend(input_wires.iter().map(|(_, wire)| wire));
+                .extend(input_wires.iter().map(|(wire, _)| wire));
 
             if total_consumers > 1 || cell.output_connections().count() > 1 {
                 let var_id = global_scope.get_mut_scope(scope_id).new_var("t", false);
@@ -317,6 +338,33 @@ fn create_inputs(
     }
 
     var_wires
+}
+
+fn add_reg_macro_prev_output(
+    inputs: &mut Vec<(Wire, usize)>,
+    cell: &Cell,
+    macro_id: MacroID,
+    global_scope: &GlobalScope,
+    module: &Module,
+) {
+    if let Some(map_output_to_input_idx) = global_scope
+        .macros
+        .get(&macro_id)
+        .unwrap()
+        .map_output_to_input_idx
+    {
+        assert_eq!(cell.output_connections().count(), 1);
+
+        let (_, output_wire) = cell.output_connections().next().unwrap();
+        let (output_name, _) = module
+            .output_ports()
+            .find(|(_, port)| output_wire == port.wire)
+            .unwrap();
+        let input_name = format!("{output_name}.i");
+        let input_wire = module.ports.get(&input_name).unwrap().wire;
+
+        inputs.push((input_wire, map_output_to_input_idx));
+    }
 }
 
 fn compute_split_upper_bounds(max_split: usize, wire_infos: &mut OrderMap<Wire, WireInfo>) {

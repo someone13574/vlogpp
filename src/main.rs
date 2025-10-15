@@ -20,6 +20,7 @@ fn main() {
         &["A", "B"],
         "Y",
         &[false, true, true, true],
+        None,
         &mut global_scope,
     );
     new_lut_primitive(
@@ -27,6 +28,7 @@ fn main() {
         &["A", "B"],
         "Y",
         &[false, false, false, true],
+        None,
         &mut global_scope,
     );
     new_lut_primitive(
@@ -34,9 +36,25 @@ fn main() {
         &["A", "B"],
         "Y",
         &[false, true, true, false],
+        None,
         &mut global_scope,
     );
-    new_lut_primitive("$_NOT_", &["A"], "Y", &[true, false], &mut global_scope);
+    new_lut_primitive(
+        "$_DFF_P_",
+        &["C", "D", "pQ"],
+        "Q",
+        &[false, true, false, true, false, false, true, true],
+        Some(2),
+        &mut global_scope,
+    );
+    new_lut_primitive(
+        "$_NOT_",
+        &["A"],
+        "Y",
+        &[true, false],
+        None,
+        &mut global_scope,
+    );
     global_scope.get_root_module().unwrap();
 
     println!("{}", global_scope);

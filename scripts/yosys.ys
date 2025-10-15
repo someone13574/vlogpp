@@ -5,12 +5,10 @@ memory;;
 fsm;;
 wreduce;;
 opt -full;;
-expose -dff -cut;;
-dffinit
 techmap;;
 opt -full;;
 splitnets -ports;;
-rmports;;
+expose -dff -cut;;
 opt -full;;
 clean -purge
 show -stretch -format ps -viewer evince

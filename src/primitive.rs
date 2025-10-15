@@ -9,6 +9,7 @@ pub fn new_lut_primitive(
     input_names: &[&str],
     output_name: &str,
     outputs: &[bool],
+    map_output_to_input_idx: Option<usize>,
     global_scope: &mut GlobalScope,
 ) -> MacroID {
     assert!(outputs.len() >= 1 && outputs.len().is_power_of_two());
@@ -47,6 +48,11 @@ pub fn new_lut_primitive(
         .get_mut_scope(scope_id)
         .new_expr(ExprContent::List(exprs), Some(paste_macro));
     let macro_id = global_scope.new_macro(&prefix, body, vars, scope_id);
+    global_scope
+        .macros
+        .get_mut(&macro_id)
+        .unwrap()
+        .map_output_to_input_idx = map_output_to_input_idx;
     assert_eq!(
         global_scope.modules.insert(name.to_string(), macro_id),
         None,
