@@ -178,6 +178,7 @@ impl GlobalScope {
                 name: alias,
                 body,
                 inputs,
+                map_output_to_input_idx: None,
             },
         );
         id
