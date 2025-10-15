@@ -1,6 +1,6 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
-use ordermap::OrderMap;
+use ordermap::{OrderMap, OrderSet};
 
 use crate::expr::{ExprContent, ExprID, VarID};
 use crate::global_scope::GlobalScope;
@@ -8,7 +8,7 @@ use crate::local_scope::LocalScope;
 use crate::r#macro::MacroID;
 use crate::yosys::{Cell, Module, Wire};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct WireInfo {
     pub input_var: Option<VarID>,
     pub expr: Option<ExprID>,
@@ -19,6 +19,7 @@ struct WireInfo {
     pub split_idx_ub: Option<usize>,
 
     pub consumers: usize,
+    pub input_wires: OrderSet<Wire>,
 }
 
 impl WireInfo {
@@ -40,7 +41,7 @@ struct Split {
 pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope) -> MacroID {
     let scope_id = global_scope.new_local_scope();
 
-    let topo = topo_sort_cells(&module.cells);
+    let cell_topo = topo_sort_cells(&module.cells);
 
     let mut wire_infos = consumer_counts(module);
     let mut var_wires = create_inputs(
@@ -56,7 +57,7 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
             .collect(),
     );
 
-    for &cell_idx in &topo {
+    for &cell_idx in &cell_topo {
         let (_cell_name, cell) = module.cells.get_index(cell_idx).unwrap();
         let call_module = global_scope.get_module(&cell.kind).unwrap();
 
@@ -81,11 +82,11 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
 
         let split_idx_lb = inputs
             .iter()
-            .map(|(_, wire, _)| wire_infos.get(&wire).unwrap().downstream_split_idx_lb())
+            .map(|(_, wire, _)| wire_infos.get(wire).unwrap().downstream_split_idx_lb())
             .max()
             .unwrap();
 
-        let content = ExprContent::List(inputs.into_iter().map(|(_, _, expr)| expr).collect());
+        let content = ExprContent::List(inputs.iter().map(|(_, _, expr)| *expr).collect());
         let expr_id = global_scope
             .get_mut_scope(scope_id)
             .new_expr(content, Some(call_module));
@@ -94,6 +95,9 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
         let wire_info = wire_infos.get_mut(&wire).unwrap();
         wire_info.expr = Some(expr_id);
         wire_info.split_idx_lb = Some(split_idx_lb);
+        wire_info
+            .input_wires
+            .extend(inputs.iter().map(|(_, wire, _)| wire));
 
         // Will need to get all consumers in bundle for multi-output
         if wire_info.consumers > 1 {
@@ -110,15 +114,12 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
         }
     }
 
-    for wire_info in wire_infos.values_mut() {
-        wire_info.split_idx_ub = wire_info.split_idx_lb;
-    }
-
     let max_split = wire_infos
         .values()
         .map(|info| info.split_idx_lb.unwrap())
         .max()
         .unwrap_or_default();
+    compute_split_upper_bounds(max_split, &mut wire_infos);
 
     let mut splits = vec![
         Split {
@@ -175,7 +176,7 @@ fn topo_sort_cells(cells: &OrderMap<String, Cell>) -> Vec<usize> {
             cell.output_connections()
                 .map(move |(_, wire)| (wire, cell_idx))
         })
-        .collect::<HashMap<Wire, usize>>();
+        .collect::<OrderMap<Wire, usize>>();
 
     for (consumer_idx, cell) in cells.values().enumerate() {
         for (_, producer_wire) in cell.input_connections() {
@@ -211,8 +212,8 @@ fn topo_sort_cells(cells: &OrderMap<String, Cell>) -> Vec<usize> {
     topo
 }
 
-fn consumer_counts(module: &Module) -> HashMap<Wire, WireInfo> {
-    let mut consumer_counts = HashMap::new();
+fn consumer_counts(module: &Module) -> OrderMap<Wire, WireInfo> {
+    let mut consumer_counts = OrderMap::new();
     for producer in module.output_ports().map(|(_name, port)| port.wire).chain(
         module
             .cells
@@ -238,6 +239,7 @@ fn consumer_counts(module: &Module) -> HashMap<Wire, WireInfo> {
                     split_idx_lb: None,
                     split_idx_ub: None,
                     consumers: count,
+                    input_wires: OrderSet::new(),
                 },
             )
         })
@@ -245,11 +247,11 @@ fn consumer_counts(module: &Module) -> HashMap<Wire, WireInfo> {
 }
 
 fn create_inputs(
-    wire_infos: &mut HashMap<Wire, WireInfo>,
+    wire_infos: &mut OrderMap<Wire, WireInfo>,
     module: &Module,
     local_scope: &mut LocalScope,
-) -> HashMap<VarID, Wire> {
-    let mut var_wires = HashMap::new();
+) -> OrderMap<VarID, Wire> {
+    let mut var_wires = OrderMap::new();
 
     for (name, port) in module.input_ports() {
         let wire_info = wire_infos.get_mut(&port.wire).unwrap();
@@ -265,11 +267,90 @@ fn create_inputs(
     var_wires
 }
 
+fn compute_split_upper_bounds(max_split: usize, wire_infos: &mut OrderMap<Wire, WireInfo>) {
+    if max_split < 2 || wire_infos.is_empty() {
+        wire_infos.values_mut().for_each(|info| {
+            info.split_idx_ub = info.split_idx_lb;
+        });
+
+        return;
+    }
+
+    // Build adjacency
+    let mut children = OrderMap::new();
+    let mut incoming = OrderMap::new();
+    for &wire in wire_infos.keys() {
+        children.insert(wire, OrderSet::new());
+        incoming.insert(wire, 0);
+    }
+
+    for (consumer_wire, consumer_info) in wire_infos.iter() {
+        for &producer_wire in &consumer_info.input_wires {
+            children
+                .get_mut(&producer_wire)
+                .unwrap()
+                .insert(*consumer_wire);
+            *incoming.get_mut(consumer_wire).unwrap() += 1;
+        }
+    }
+
+    // Topo sort
+    let mut queue = VecDeque::new();
+    for (&wire, &degree) in &incoming {
+        if degree == 0 {
+            queue.push_back(wire);
+        }
+    }
+
+    let mut topo = Vec::new();
+    while let Some(wire) = queue.pop_front() {
+        topo.push(wire);
+        if let Some(wire_children) = children.get(&wire) {
+            for child in wire_children {
+                let degree = incoming.get_mut(child).unwrap();
+                *degree -= 1;
+                if *degree == 0 {
+                    queue.push_back(*child);
+                }
+            }
+        }
+    }
+
+    assert_eq!(topo.len(), wire_infos.len());
+
+    // Compute upper bounds
+    for wire_info in wire_infos.values_mut() {
+        if wire_info.input_var.is_some() {
+            wire_info.split_idx_ub = Some(0);
+        } else {
+            wire_info.split_idx_ub = Some(max_split);
+        }
+    }
+
+    for wire in topo.iter().rev() {
+        let delta = wire_infos.get(wire).unwrap().split_delta.unwrap();
+        if let Some(wire_children) = children.get(wire) {
+            for child in wire_children {
+                let ub = wire_infos
+                    .get(child)
+                    .unwrap()
+                    .split_idx_ub
+                    .unwrap()
+                    .saturating_sub(delta);
+
+                if ub < wire_infos.get(wire).unwrap().split_idx_ub.unwrap() {
+                    wire_infos.get_mut(wire).unwrap().split_idx_ub = Some(ub);
+                }
+            }
+        }
+    }
+}
+
 fn add_to_split(
     wire: Wire,
     target_split_idx: usize,
-    wire_infos: &HashMap<Wire, WireInfo>,
-    var_wires: &HashMap<VarID, Wire>,
+    wire_infos: &OrderMap<Wire, WireInfo>,
+    var_wires: &OrderMap<VarID, Wire>,
     splits: &mut Vec<Split>,
     local_scope: &LocalScope,
 ) {
