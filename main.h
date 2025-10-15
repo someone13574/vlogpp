@@ -16,10 +16,10 @@
 #define _AND_(a, b) PASTE_EXPAND_3(_AND__, a, b)
 #define _XOR_(a, b) PASTE_EXPAND_3(_XOR__, a, b)
 #define ADDER(a0, a1, a2, a3, b0, b1, b2, b3)                                  \
-  ADDER0(b0, a0, _XOR_(b1, a1), _AND_(b0, a0), _XOR_(b2, a2), b1, a1,          \
+  ADDER0(b0, a0, _XOR_(b1, a1), _AND_(b0, a0), b2, a2, b1, a1, b3, a3)
+#define ADDER0(b0, a0, t0, t3, b2, a2, b1, a1, b3, a3)                         \
+  ADDER1(b0, a0, t0, t3, _XOR_(b2, a2), _OR_(_AND_(b1, a1), _AND_(t0, t3)),    \
          _XOR_(b3, a3), _AND_(b2, a2), b3, a3)
-#define ADDER0(b0, a0, t0, t3, t1, b1, a1, t2, t, b3, a3)                      \
-  ADDER1(b0, a0, t0, t3, t1, _OR_(_AND_(b1, a1), _AND_(t0, t3)), t2, t, b3, a3)
 #define ADDER1(b0, a0, t0, t3, t1, t4, t2, t, b3, a3)                          \
   _XOR_(b0, a0), _XOR_(t0, t3), _XOR_(t1, t4),                                 \
       _XOR_(t2, _OR_(t, _AND_(t1, t4))),                                       \
