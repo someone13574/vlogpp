@@ -36,7 +36,7 @@ fn main() {
         &[false, true, true, false],
         &mut global_scope,
     );
-    global_scope.get_module("adder").unwrap();
+    global_scope.get_root_module().unwrap();
 
     println!("{}", global_scope);
 }

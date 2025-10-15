@@ -113,14 +113,30 @@ impl GlobalScope {
         prefix
     }
 
+    pub fn get_root_module(&mut self) -> Option<MacroID> {
+        let mut top_name = None;
+        for (name, module) in &self.yosys.modules {
+            if module
+                .attributes
+                .get("top")
+                .is_some_and(|value| u32::from_str_radix(value, 2).unwrap() != 0)
+            {
+                top_name = Some(name.to_string());
+            }
+        }
+
+        if let Some(name) = &top_name {
+            self.get_module(name)
+        } else {
+            None
+        }
+    }
+
     pub fn get_module(&mut self, name: &str) -> Option<MacroID> {
         if let Some(id) = self.modules.get(name) {
             Some(*id)
         } else {
-            let Some(module) = self.yosys.modules.get(name).cloned() else {
-                return None;
-            };
-
+            let module = self.yosys.modules.get(name).cloned()?;
             Some(create_module(name, &module, self))
         }
     }
@@ -178,7 +194,6 @@ impl GlobalScope {
 
         let scope_id = self.new_local_scope();
         let vars = ('a'..='z')
-            .into_iter()
             .take(num_inputs)
             .map(|x| self.get_mut_scope(scope_id).new_var(&x.to_string(), false))
             .collect::<Vec<_>>();

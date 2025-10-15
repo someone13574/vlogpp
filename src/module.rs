@@ -13,6 +13,7 @@ struct WireInfo {
     pub input_var: Option<VarID>,
     pub expr: Option<ExprID>,
     pub downstream_expr: Option<ExprID>,
+    pub bundled_expr: Option<(VarID, ExprID, usize)>,
 
     pub split_delta: Option<usize>,
     pub split_idx_lb: Option<usize>,
@@ -23,12 +24,33 @@ struct WireInfo {
 }
 
 impl WireInfo {
-    fn downstream_expr(&self) -> ExprID {
-        self.downstream_expr.or(self.expr).unwrap()
+    fn expr_for_lb_split(&self, split_idx_lb: usize) -> ExprID {
+        if self.split_idx_lb.unwrap() == split_idx_lb {
+            self.expr.unwrap()
+        } else if self.split_idx_lb.unwrap() + 1 == split_idx_lb && self.bundled_expr.is_some() {
+            self.bundled_expr.unwrap().1
+        } else {
+            self.downstream_expr.or(self.expr).unwrap()
+        }
+    }
+
+    fn expr_for_ub_split(&self, split_idx_ub: usize) -> ExprID {
+        if self.split_idx_ub.unwrap() == split_idx_ub {
+            self.expr.unwrap()
+        } else if self.split_idx_ub.unwrap() + 1 == split_idx_ub && self.bundled_expr.is_some() {
+            self.bundled_expr.unwrap().1
+        } else {
+            self.downstream_expr.or(self.expr).unwrap()
+        }
     }
 
     fn downstream_split_idx_lb(&self) -> usize {
         self.split_idx_lb.unwrap() + self.split_delta.unwrap()
+    }
+
+    fn placement_split_delta(&self) -> usize {
+        // Force bundles to be expanded before the final split
+        if self.split_delta.unwrap() == 2 { 2 } else { 0 }
     }
 }
 
@@ -36,6 +58,7 @@ impl WireInfo {
 struct Split {
     pub exprs: Vec<ExprID>,
     pub vars: Vec<VarID>,
+    pub output_count: usize,
 }
 
 pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope) -> MacroID {
@@ -61,17 +84,8 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
         let (_cell_name, cell) = module.cells.get_index(cell_idx).unwrap();
         let call_module = global_scope.get_module(&cell.kind).unwrap();
 
-        assert_eq!(
-            cell.output_connections().count(),
-            1,
-            "Only single output is supported for now"
-        );
-
-        let mut inputs = cell
-            .input_connections()
-            .map(|(name, wire)| (name, wire, wire_infos.get(&wire).unwrap().downstream_expr()))
-            .collect::<Vec<_>>();
-        inputs.sort_by_key(|(name, _, _)| {
+        let mut input_wires = cell.input_connections().collect::<Vec<_>>();
+        input_wires.sort_by_key(|(name, _)| {
             global_scope
                 .macros
                 .get(&call_module)
@@ -79,44 +93,80 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
                 .input_position(name, global_scope)
                 .unwrap()
         });
-
-        let split_idx_lb = inputs
+        let split_idx_lb = input_wires
             .iter()
-            .map(|(_, wire, _)| wire_infos.get(wire).unwrap().downstream_split_idx_lb())
+            .map(|(_name, wire)| wire_infos.get(wire).unwrap().downstream_split_idx_lb())
             .max()
             .unwrap();
 
-        let content = ExprContent::List(inputs.iter().map(|(_, _, expr)| *expr).collect());
+        let input_exprs = input_wires
+            .iter()
+            .map(|(_name, wire)| {
+                wire_infos
+                    .get(wire)
+                    .unwrap()
+                    .expr_for_lb_split(split_idx_lb)
+            })
+            .collect::<Vec<_>>();
+
+        let content = ExprContent::List(input_exprs);
         let expr_id = global_scope
             .get_mut_scope(scope_id)
             .new_expr(content, Some(call_module));
 
-        let wire = cell.output_connections().next().unwrap().1;
-        let wire_info = wire_infos.get_mut(&wire).unwrap();
-        wire_info.expr = Some(expr_id);
-        wire_info.split_idx_lb = Some(split_idx_lb);
-        wire_info
-            .input_wires
-            .extend(inputs.iter().map(|(_, wire, _)| wire));
+        let output_wires = cell
+            .output_connections()
+            .map(|(_, wire)| wire)
+            .collect::<Vec<_>>();
+        let total_consumers: usize = output_wires
+            .iter()
+            .map(|wire| wire_infos.get(wire).unwrap().consumers)
+            .sum();
 
-        // Will need to get all consumers in bundle for multi-output
-        if wire_info.consumers > 1 {
-            let temp_var = global_scope.get_mut_scope(scope_id).new_var("t", false);
+        let bundle_var_expr = if output_wires.len() > 1 {
+            let var_id = global_scope
+                .get_mut_scope(scope_id)
+                .new_var(&format!("bundleof{}_", output_wires.len()), false);
             let expr_id = global_scope
                 .get_mut_scope(scope_id)
-                .new_expr(ExprContent::Var(temp_var), None);
-            var_wires.insert(temp_var, wire);
-
-            wire_info.downstream_expr = Some(expr_id);
-            wire_info.split_delta = Some(1);
+                .new_expr(ExprContent::Var(var_id), None);
+            Some((var_id, expr_id))
         } else {
-            wire_info.split_delta = Some(0);
+            None
+        };
+
+        for &wire in &output_wires {
+            let wire_info = wire_infos.get_mut(&wire).unwrap();
+            wire_info.expr = Some(expr_id);
+            wire_info.split_idx_lb = Some(split_idx_lb);
+            wire_info
+                .input_wires
+                .extend(input_wires.iter().map(|(_, wire)| wire));
+
+            if total_consumers > 1 || cell.output_connections().count() > 1 {
+                let var_id = global_scope.get_mut_scope(scope_id).new_var("t", false);
+                let expr_id = global_scope
+                    .get_mut_scope(scope_id)
+                    .new_expr(ExprContent::Var(var_id), None);
+                var_wires.insert(var_id, wire);
+                wire_info.downstream_expr = Some(expr_id);
+
+                if let Some((bundle_var, bundle_var_expr)) = bundle_var_expr {
+                    wire_info.bundled_expr =
+                        Some((bundle_var, bundle_var_expr, output_wires.len()));
+                    wire_info.split_delta = Some(2);
+                } else {
+                    wire_info.split_delta = Some(1);
+                }
+            } else {
+                wire_info.split_delta = Some(0);
+            }
         }
     }
 
     let max_split = wire_infos
         .values()
-        .map(|info| info.split_idx_lb.unwrap())
+        .map(|info| info.split_idx_lb.unwrap() + info.placement_split_delta())
         .max()
         .unwrap_or_default();
     compute_split_upper_bounds(max_split, &mut wire_infos);
@@ -124,7 +174,8 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
     let mut splits = vec![
         Split {
             exprs: Vec::new(),
-            vars: Vec::new()
+            vars: Vec::new(),
+            output_count: 0
         };
         max_split + 1
     ];
@@ -162,7 +213,7 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
         next_split = Some(macro_id);
     }
 
-    ids.iter().next().unwrap().0
+    ids.first().unwrap().0
 }
 
 fn topo_sort_cells(cells: &OrderMap<String, Cell>) -> Vec<usize> {
@@ -235,6 +286,7 @@ fn consumer_counts(module: &Module) -> OrderMap<Wire, WireInfo> {
                     input_var: None,
                     expr: None,
                     downstream_expr: None,
+                    bundled_expr: None,
                     split_delta: None,
                     split_idx_lb: None,
                     split_idx_ub: None,
@@ -323,7 +375,7 @@ fn compute_split_upper_bounds(max_split: usize, wire_infos: &mut OrderMap<Wire, 
         if wire_info.input_var.is_some() {
             wire_info.split_idx_ub = Some(0);
         } else {
-            wire_info.split_idx_ub = Some(max_split);
+            wire_info.split_idx_ub = Some(max_split - wire_info.placement_split_delta());
         }
     }
 
@@ -355,19 +407,12 @@ fn add_to_split(
     local_scope: &LocalScope,
 ) {
     let info = wire_infos.get(&wire).unwrap();
-    let expr_id = if info.split_idx_ub.unwrap() == target_split_idx {
-        info.expr.unwrap()
-    } else {
-        info.downstream_expr()
-    };
+    let expr_id = info.expr_for_ub_split(target_split_idx);
 
     splits[target_split_idx].exprs.push(expr_id);
+    splits[target_split_idx].output_count += 1;
 
-    for var_id in local_scope
-        .get_expr(expr_id)
-        .input_vars(local_scope)
-        .into_iter()
-    {
+    for var_id in local_scope.get_expr(expr_id).input_vars(local_scope) {
         let var_wire = var_wires.get(&var_id).unwrap();
         let var_info = wire_infos.get(var_wire).unwrap();
         let mut prev_input_idx = None;
@@ -379,7 +424,7 @@ fn add_to_split(
             .rev()
         {
             if var_info.split_idx_ub.unwrap() == split_idx && var_info.split_delta.unwrap() != 0 {
-                if prev_input_idx.is_some_and(|prev_input_idx| prev_input_idx == split.exprs.len())
+                if prev_input_idx.is_some_and(|prev_input_idx| prev_input_idx == split.output_count)
                 {
                     add_to_split(
                         *var_wire,
@@ -393,15 +438,34 @@ fn add_to_split(
                 break;
             }
 
-            if prev_input_idx.is_some_and(|prev_input_idx| prev_input_idx == split.exprs.len()) {
-                split.exprs.push(var_info.downstream_expr());
-            }
+            if var_info.split_idx_ub.unwrap() + 1 == split_idx && var_info.bundled_expr.is_some() {
+                let (bundle_var, bundle_var_expr, expanded_len) = var_info.bundled_expr.unwrap();
+                if prev_input_idx.is_some_and(|prev_input_idx| {
+                    prev_input_idx + 1 == split.output_count + expanded_len
+                }) {
+                    split.exprs.push(bundle_var_expr);
+                    split.output_count += expanded_len;
+                }
 
-            if let Some(idx) = split.vars.iter().position(|input| *input == var_id) {
-                prev_input_idx = Some(idx);
+                if let Some(idx) = split.vars.iter().position(|input| *input == bundle_var) {
+                    prev_input_idx = Some(idx);
+                } else {
+                    prev_input_idx = Some(split.vars.len());
+                    split.vars.push(bundle_var);
+                }
             } else {
-                prev_input_idx = Some(split.vars.len());
-                split.vars.push(var_id);
+                if prev_input_idx.is_some_and(|prev_input_idx| prev_input_idx == split.output_count)
+                {
+                    split.exprs.push(var_info.expr_for_ub_split(split_idx));
+                    split.output_count += 1;
+                }
+
+                if let Some(idx) = split.vars.iter().position(|input| *input == var_id) {
+                    prev_input_idx = Some(idx);
+                } else {
+                    prev_input_idx = Some(split.vars.len());
+                    split.vars.push(var_id);
+                }
             }
         }
     }

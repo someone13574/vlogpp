@@ -60,35 +60,24 @@ impl Expr {
             ExprContent::Var(var_id) => {
                 format!("{}", local_scope.get_var(*var_id))
             }
-            ExprContent::Text(text) => {
-                format!("{text}")
-            }
+            ExprContent::Text(text) => text.to_string(),
             ExprContent::List(expr_ids) => {
-                format!(
-                    "{}",
-                    expr_ids
-                        .iter()
-                        .map(|expr_id| {
-                            format!(
-                                "{}",
-                                local_scope
-                                    .get_expr(*expr_id)
-                                    .emit(global_scope, local_scope)
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
+                expr_ids
+                    .iter()
+                    .map(|expr_id| {
+                        local_scope
+                            .get_expr(*expr_id)
+                            .emit(global_scope, local_scope)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
             }
             ExprContent::Concat(var_ids) => {
-                format!(
-                    "{}",
-                    var_ids
-                        .iter()
-                        .map(|var_id| { format!("{}", local_scope.get_var(*var_id)) })
-                        .collect::<Vec<_>>()
-                        .join("##")
-                )
+                var_ids
+                    .iter()
+                    .map(|var_id| format!("{}", local_scope.get_var(*var_id)))
+                    .collect::<Vec<_>>()
+                    .join("##")
             }
         };
 

@@ -42,9 +42,7 @@ impl<'de> Deserialize<'de> for Wire {
         if vec.len() == 1 {
             Ok(Wire(vec.into_iter().next().unwrap()))
         } else {
-            Err(serde::de::Error::custom(format!(
-                "Yosys input must be fully split"
-            )))
+            Err(serde::de::Error::custom("Yosys input must be fully split"))
         }
     }
 }
@@ -68,8 +66,8 @@ pub enum PortDirection {
 pub struct Cell {
     #[serde(rename = "type")]
     pub kind: String,
-    pub port_directions: HashMap<String, PortDirection>,
-    pub connections: HashMap<String, Wire>,
+    pub port_directions: OrderMap<String, PortDirection>,
+    pub connections: OrderMap<String, Wire>,
 }
 
 impl Cell {
