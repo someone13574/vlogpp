@@ -1,7 +1,7 @@
 #!/bin/bash
 
 yosys -p "
-    read_verilog -sv circuits/adder.v
+    read_verilog -sv circuits/counter.v
 
     hierarchy -check -auto-top;
     proc; memory; fsm; wreduce; opt -full
