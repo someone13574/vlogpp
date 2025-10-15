@@ -34,7 +34,7 @@ impl LocalScope {
 
         while {
             alias = if let Some(suffix) = suffix {
-                format!("{}__{suffix}", preprocess_var_name(name))
+                format!("{}{suffix}", preprocess_var_name(name))
             } else {
                 preprocess_var_name(name)
             };
