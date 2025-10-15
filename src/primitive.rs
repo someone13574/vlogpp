@@ -11,7 +11,7 @@ pub fn new_lut_primitive(
     outputs: &[bool],
     global_scope: &mut GlobalScope,
 ) -> MacroID {
-    assert!(outputs.len() >= 4 && outputs.len().is_power_of_two());
+    assert!(outputs.len() >= 1 && outputs.len().is_power_of_two());
     let num_inputs = outputs.len().ilog2() as usize;
     assert_eq!(num_inputs, input_names.len());
 

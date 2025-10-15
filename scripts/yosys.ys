@@ -1,0 +1,17 @@
+read_verilog -sv circuits/counter.v
+hierarchy -check -auto-top
+proc;;
+memory;;
+fsm;;
+wreduce;;
+opt -full;;
+expose -dff -cut;;
+dffinit
+techmap;;
+opt -full;;
+splitnets -ports;;
+rmports;;
+opt -full;;
+clean -purge
+show -stretch -format ps -viewer evince
+write_json design.json

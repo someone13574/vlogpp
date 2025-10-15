@@ -36,6 +36,7 @@ fn main() {
         &[false, true, true, false],
         &mut global_scope,
     );
+    new_lut_primitive("$_NOT_", &["A"], "Y", &[true, false], &mut global_scope);
     global_scope.get_root_module().unwrap();
 
     println!("{}", global_scope);
