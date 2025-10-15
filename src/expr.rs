@@ -1,4 +1,5 @@
 use std::fmt::{self, Display};
+use std::iter;
 
 use crate::global_scope::GlobalScope;
 use crate::local_scope::LocalScope;
@@ -21,6 +22,7 @@ impl Display for Var {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum ExprContent {
     Var(VarID),
     Text(String),
@@ -28,6 +30,7 @@ pub enum ExprContent {
     Concat(Vec<VarID>),
 }
 
+#[derive(Debug)]
 pub struct Expr {
     pub id: ExprID,
     pub wrapper: Option<MacroID>,
@@ -35,6 +38,23 @@ pub struct Expr {
 }
 
 impl Expr {
+    pub fn input_vars(&self, local_scope: &LocalScope) -> impl Iterator<Item = VarID> {
+        match &self.content {
+            ExprContent::Var(var_id) => EitherIter::A(iter::once(*var_id)),
+            ExprContent::Text(_) => EitherIter::B(iter::empty::<VarID>()),
+            ExprContent::List(expr_ids) => {
+                EitherIter::C(expr_ids.iter().flat_map(|expr_id| {
+                    local_scope
+                        .get_expr(*expr_id)
+                        .input_vars(local_scope)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                }))
+            }
+            ExprContent::Concat(var_ids) => EitherIter::D(var_ids.iter().copied()),
+        }
+    }
+
     pub fn emit(&self, global_scope: &GlobalScope, local_scope: &LocalScope) -> String {
         let content = match &self.content {
             ExprContent::Var(var_id) => {
@@ -79,6 +99,33 @@ impl Expr {
             )
         } else {
             content
+        }
+    }
+}
+
+pub enum EitherIter<AIterType, BIterType, CIterType, DIterType> {
+    A(AIterType),
+    B(BIterType),
+    C(CIterType),
+    D(DIterType),
+}
+
+impl<AIterType, BIterType, CIterType, DIterType> Iterator
+    for EitherIter<AIterType, BIterType, CIterType, DIterType>
+where
+    AIterType: Iterator,
+    BIterType: Iterator<Item = AIterType::Item>,
+    CIterType: Iterator<Item = AIterType::Item>,
+    DIterType: Iterator<Item = AIterType::Item>,
+{
+    type Item = AIterType::Item;
+
+    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
+        match self {
+            EitherIter::A(it) => it.next(),
+            EitherIter::B(it) => it.next(),
+            EitherIter::C(it) => it.next(),
+            EitherIter::D(it) => it.next(),
         }
     }
 }

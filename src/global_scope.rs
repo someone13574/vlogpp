@@ -62,6 +62,13 @@ impl GlobalScope {
     pub fn get_mut_scope(&mut self, scope_id: LocalScopeID) -> &mut LocalScope {
         self.scopes.get_mut(&scope_id).unwrap()
     }
+
+    pub fn get_mut_expr(&mut self, expr_id: ExprID, scope_id: LocalScopeID) -> &mut Expr {
+        self.get_mut_scope(scope_id)
+            .exprs
+            .get_mut(&expr_id)
+            .unwrap()
+    }
 }
 
 impl GlobalScope {
@@ -89,7 +96,7 @@ impl GlobalScope {
 
         while {
             prefix = if let Some(suffix) = suffix {
-                format!("{}__{suffix}", preprocess_macro_name(name))
+                format!("{}{suffix}", preprocess_macro_name(name))
             } else {
                 preprocess_macro_name(name)
             };
@@ -130,7 +137,7 @@ impl GlobalScope {
 
         while {
             alias = if let Some(suffix) = suffix {
-                format!("{}__{suffix}", preprocess_macro_name(name))
+                format!("{}{suffix}", preprocess_macro_name(name))
             } else {
                 preprocess_macro_name(name)
             };
