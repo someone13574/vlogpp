@@ -33,7 +33,7 @@ pub enum ExprContent {
 #[derive(Debug)]
 pub struct Expr {
     pub id: ExprID,
-    pub wrapper: Option<MacroID>,
+    pub wrapper: Option<(MacroID, Option<ExprID>)>,
     pub content: ExprContent,
 }
 
@@ -81,11 +81,19 @@ impl Expr {
             }
         };
 
-        if let Some(wrapper) = &self.wrapper {
-            format!(
-                "{}({content})",
-                global_scope.macros.get(wrapper).unwrap().name
-            )
+        if let Some((wrapper, call)) = &self.wrapper {
+            if let Some(call) = call {
+                format!(
+                    "{}({content})({})",
+                    global_scope.macros.get(wrapper).unwrap().name,
+                    local_scope.get_expr(*call).emit(global_scope, local_scope)
+                )
+            } else {
+                format!(
+                    "{}({content})",
+                    global_scope.macros.get(wrapper).unwrap().name
+                )
+            }
         } else {
             content
         }

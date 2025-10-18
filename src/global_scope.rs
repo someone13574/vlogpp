@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 
-use ordermap::OrderMap;
+use ordermap::{OrderMap, OrderSet};
 
 use crate::expr::{Expr, ExprContent, ExprID, Var, VarID};
 use crate::local_scope::{LocalScope, LocalScopeID};
 use crate::r#macro::{Macro, MacroID};
 use crate::module::create_module;
+use crate::recursion::RecursionMacros;
 use crate::yosys::Yosys;
 
 pub struct GlobalScope {
@@ -15,12 +16,14 @@ pub struct GlobalScope {
     next_macro_id: MacroID,
     next_scope_id: LocalScopeID,
 
+    pub reserved_names: OrderSet<String>,
     pub defines: OrderMap<String, String>,
     pub macros: OrderMap<MacroID, Macro>,
     pub scopes: HashMap<LocalScopeID, LocalScope>,
 
     pub modules: HashMap<String, MacroID>,
     pub paste_macros: HashMap<(usize, bool), MacroID>,
+    pub recusion_macros: RecursionMacros,
 }
 
 impl GlobalScope {
@@ -29,11 +32,13 @@ impl GlobalScope {
             yosys,
             next_macro_id: MacroID(0),
             next_scope_id: LocalScopeID(0),
+            reserved_names: OrderSet::new(),
             defines: OrderMap::new(),
             macros: OrderMap::new(),
             scopes: HashMap::new(),
             modules: HashMap::new(),
             paste_macros: HashMap::new(),
+            recusion_macros: RecursionMacros::new(),
         }
     }
 }
@@ -90,29 +95,6 @@ impl GlobalScope {
         id
     }
 
-    pub fn get_macro_prefix(&self, name: &str) -> String {
-        let mut prefix;
-        let mut suffix = None;
-
-        while {
-            prefix = if let Some(suffix) = suffix {
-                format!("{}{suffix}", preprocess_macro_name(name))
-            } else {
-                preprocess_macro_name(name)
-            };
-
-            self.macros
-                .values()
-                .map(|r#macro| &r#macro.name)
-                .chain(self.defines.values())
-                .any(|name| name.starts_with(&prefix))
-        } {
-            suffix = Some(suffix.map_or(0, |x| x + 1));
-        }
-
-        prefix
-    }
-
     pub fn get_root_module(&mut self) -> Option<MacroID> {
         let mut top_name = None;
         for (name, module) in &self.yosys.modules {
@@ -148,24 +130,7 @@ impl GlobalScope {
         inputs: Vec<VarID>,
         scope_id: LocalScopeID,
     ) -> MacroID {
-        let mut alias;
-        let mut suffix = None;
-
-        while {
-            alias = if let Some(suffix) = suffix {
-                format!("{}{suffix}", preprocess_macro_name(name))
-            } else {
-                preprocess_macro_name(name)
-            };
-
-            self.macros
-                .values()
-                .map(|r#macro| &r#macro.name)
-                .chain(self.defines.values())
-                .any(|name| *name == alias)
-        } {
-            suffix = Some(suffix.map_or(0, |x| x + 1));
-        }
+        let alias = self.get_alias(name, false);
 
         let id = self.next_macro_id;
         self.next_macro_id.0 += 1;
@@ -182,6 +147,51 @@ impl GlobalScope {
             },
         );
         id
+    }
+
+    pub fn new_define(&mut self, key: String, value: String) {
+        assert!(self.name_available(&key, false));
+        self.defines.insert(key, value);
+    }
+
+    pub fn new_reserved(&mut self, name: String) {
+        assert!(self.name_available(&name, false));
+        self.reserved_names.insert(name);
+    }
+
+    pub fn name_available(&self, name: &str, prefix: bool) -> bool {
+        !self
+            .macros
+            .values()
+            .map(|name| &name.name)
+            .chain(self.defines.keys())
+            .chain(self.reserved_names.iter())
+            .any(|existing| {
+                if prefix {
+                    existing.starts_with(name)
+                } else {
+                    existing == name
+                }
+            })
+    }
+
+    pub fn get_alias(&self, name: &str, prefix: bool) -> String {
+        let mut alias;
+        let mut suffix = None;
+
+        while {
+            alias = if let Some(suffix) = suffix {
+                format!("{}{suffix}", preprocess_macro_name(name))
+            } else {
+                preprocess_macro_name(name)
+            };
+
+            !self.name_available(&alias, prefix)
+        } {
+            suffix = Some(suffix.map_or(0, |x| x + 1));
+        }
+
+        alias
     }
 }
 
@@ -208,7 +218,7 @@ impl GlobalScope {
                 .collect::<Vec<_>>();
             (
                 ExprContent::List(exprs),
-                Some(self.paste_macro(num_inputs, false)),
+                Some((self.paste_macro(num_inputs, false), None)),
             )
         } else {
             (ExprContent::Concat(vars.clone()), None)
@@ -224,6 +234,14 @@ impl GlobalScope {
 
         self.paste_macros.insert((num_inputs, expand), macro_id);
         macro_id
+    }
+
+    pub fn decrement_macro(&mut self) -> MacroID {
+        let mut recusion_macros = std::mem::take(&mut self.recusion_macros);
+        recusion_macros.when_done(self);
+        let decrement_macro = recusion_macros.decrement(self);
+        self.recusion_macros = recusion_macros;
+        decrement_macro
     }
 }
 
