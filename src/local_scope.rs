@@ -54,7 +54,11 @@ impl LocalScope {
         id
     }
 
-    pub fn new_expr(&mut self, content: ExprContent, wrapper: Option<MacroID>) -> ExprID {
+    pub fn new_expr(
+        &mut self,
+        content: ExprContent,
+        wrapper: Option<(MacroID, Option<ExprID>)>,
+    ) -> ExprID {
         let id = self.next_expr_id;
         self.next_expr_id.0 += 1;
 
@@ -67,6 +71,18 @@ impl LocalScope {
             },
         );
         id
+    }
+
+    pub fn new_var_expr(
+        &mut self,
+        name: &str,
+        map_input: bool,
+        wrapper: Option<(MacroID, Option<ExprID>)>,
+    ) -> (VarID, ExprID) {
+        let var = self.new_var(name, map_input);
+        let expr = self.new_expr(ExprContent::Var(var), wrapper);
+
+        (var, expr)
     }
 }
 

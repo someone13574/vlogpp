@@ -133,7 +133,7 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
         let content = ExprContent::List(input_exprs);
         let expr_id = global_scope
             .get_mut_scope(scope_id)
-            .new_expr(content, Some(call_module));
+            .new_expr(content, Some((call_module, None)));
 
         let output_wires = cell
             .output_connections()
@@ -185,6 +185,8 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
         }
     }
 
+    println!("{wire_infos:#?}");
+
     let max_split = wire_infos
         .values()
         .map(|info| info.split_idx_lb.unwrap() + info.placement_split_delta())
@@ -231,7 +233,7 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
     let mut next_split = None;
     for &(macro_id, expr_id) in ids.iter().rev() {
         global_scope.get_mut_expr(expr_id, scope_id).wrapper = next_split;
-        next_split = Some(macro_id);
+        next_split = Some((macro_id, None));
     }
 
     ids.first().unwrap().0
@@ -280,7 +282,7 @@ fn topo_sort_cells(cells: &OrderMap<String, Cell>) -> Vec<usize> {
         }
     }
 
-    assert_eq!(topo.len(), cells.len());
+    assert_eq!(topo.len(), cells.len(), "Netlist topology is not a DAG");
     topo
 }
 

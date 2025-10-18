@@ -4,7 +4,7 @@ use crate::expr::ExprContent;
 use crate::global_scope::GlobalScope;
 use crate::r#macro::MacroID;
 
-pub fn new_lut_primitive(
+pub fn new_lut_macro(
     name: &str,
     input_names: &[&str],
     output_name: &str,
@@ -24,7 +24,7 @@ pub fn new_lut_primitive(
     global_scope.get_mut_scope(scope_id).output_names = Some(vec![output_name.to_string()]);
 
     let paste_macro = global_scope.paste_macro(num_inputs + 1, true);
-    let prefix = global_scope.get_macro_prefix(name);
+    let prefix = global_scope.get_alias(name, true);
     let exprs = once(ExprContent::Text(format!("{prefix}_")))
         .chain(vars.iter().map(|var| ExprContent::Var(*var)))
         .map(|content| global_scope.get_mut_scope(scope_id).new_expr(content, None))
@@ -46,7 +46,7 @@ pub fn new_lut_primitive(
 
     let body = global_scope
         .get_mut_scope(scope_id)
-        .new_expr(ExprContent::List(exprs), Some(paste_macro));
+        .new_expr(ExprContent::List(exprs), Some((paste_macro, None)));
     let macro_id = global_scope.new_macro(&prefix, body, vars, scope_id);
     global_scope
         .macros
