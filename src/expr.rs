@@ -1,15 +1,10 @@
 use std::fmt::{self, Display};
-use std::iter;
 
-use crate::global_scope::GlobalScope;
-use crate::local_scope::LocalScope;
 use crate::r#macro::MacroID;
+use crate::scope::Scope;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct VarID(pub usize);
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct ExprID(pub usize);
 
 pub struct Var {
     pub id: VarID,
@@ -22,107 +17,66 @@ impl Display for Var {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum ExprContent {
+#[derive(Debug, Clone)]
+pub enum Expr {
     Var(VarID),
+    Macro(MacroID),
     Text(String),
-    List(Vec<ExprID>),
-    Concat(Vec<VarID>),
-}
-
-#[derive(Debug)]
-pub struct Expr {
-    pub id: ExprID,
-    pub wrapper: Option<(MacroID, Option<ExprID>)>,
-    pub content: ExprContent,
+    List(Vec<Expr>),
+    Concat(Vec<Expr>),
+    Call { r#macro: Box<Expr>, args: Vec<Expr> },
 }
 
 impl Expr {
-    pub fn input_vars(&self, local_scope: &LocalScope) -> impl Iterator<Item = VarID> {
-        match &self.content {
-            ExprContent::Var(var_id) => EitherIter::A(iter::once(*var_id)),
-            ExprContent::Text(_) => EitherIter::B(iter::empty::<VarID>()),
-            ExprContent::List(expr_ids) => {
-                EitherIter::C(expr_ids.iter().flat_map(|expr_id| {
-                    local_scope
-                        .get_expr(*expr_id)
-                        .input_vars(local_scope)
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                }))
+    pub fn vars(&self) -> Vec<VarID> {
+        match self {
+            Expr::Var(var_id) => vec![*var_id],
+            Expr::Macro(_) | Expr::Text(_) => Vec::new(),
+            Expr::List(exprs) | Expr::Concat(exprs) => {
+                exprs
+                    .iter()
+                    .flat_map(|expr| expr.vars().into_iter())
+                    .collect()
             }
-            ExprContent::Concat(var_ids) => EitherIter::D(var_ids.iter().copied()),
+            Expr::Call { r#macro, args } => {
+                r#macro
+                    .vars()
+                    .into_iter()
+                    .chain(args.iter().flat_map(|expr| expr.vars().into_iter()))
+                    .collect()
+            }
         }
     }
 
-    pub fn emit(&self, global_scope: &GlobalScope, local_scope: &LocalScope) -> String {
-        let content = match &self.content {
-            ExprContent::Var(var_id) => {
-                format!("{}", local_scope.get_var(*var_id))
-            }
-            ExprContent::Text(text) => text.to_string(),
-            ExprContent::List(expr_ids) => {
-                expr_ids
+    pub fn emit(&self, scope: Scope) -> String {
+        match self {
+            Expr::Var(var_id) => scope.get_var(*var_id).name.clone(),
+            Expr::Macro(macro_id) => scope.get_macro(*macro_id).name.clone(),
+            Expr::Text(text) => text.clone(),
+            Expr::List(exprs) => {
+                exprs
                     .iter()
-                    .map(|expr_id| {
-                        local_scope
-                            .get_expr(*expr_id)
-                            .emit(global_scope, local_scope)
-                    })
+                    .map(|expr| expr.emit(scope))
                     .collect::<Vec<_>>()
                     .join(", ")
             }
-            ExprContent::Concat(var_ids) => {
-                var_ids
+            Expr::Concat(exprs) => {
+                exprs
                     .iter()
-                    .map(|var_id| format!("{}", local_scope.get_var(*var_id)))
+                    .map(|expr| expr.emit(scope))
                     .collect::<Vec<_>>()
                     .join("##")
             }
-        };
-
-        if let Some((wrapper, call)) = &self.wrapper {
-            if let Some(call) = call {
+            Expr::Call { r#macro, args } => {
                 format!(
-                    "{}({content})({})",
-                    global_scope.macros.get(wrapper).unwrap().name,
-                    local_scope.get_expr(*call).emit(global_scope, local_scope)
-                )
-            } else {
-                format!(
-                    "{}({content})",
-                    global_scope.macros.get(wrapper).unwrap().name
+                    "{}({})",
+                    r#macro.emit(scope),
+                    args.iter()
+                        .map(|expr| expr.emit(scope))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )
             }
-        } else {
-            content
-        }
-    }
-}
-
-pub enum EitherIter<AIterType, BIterType, CIterType, DIterType> {
-    A(AIterType),
-    B(BIterType),
-    C(CIterType),
-    D(DIterType),
-}
-
-impl<AIterType, BIterType, CIterType, DIterType> Iterator
-    for EitherIter<AIterType, BIterType, CIterType, DIterType>
-where
-    AIterType: Iterator,
-    BIterType: Iterator<Item = AIterType::Item>,
-    CIterType: Iterator<Item = AIterType::Item>,
-    DIterType: Iterator<Item = AIterType::Item>,
-{
-    type Item = AIterType::Item;
-
-    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
-        match self {
-            EitherIter::A(it) => it.next(),
-            EitherIter::B(it) => it.next(),
-            EitherIter::C(it) => it.next(),
-            EitherIter::D(it) => it.next(),
         }
     }
 }

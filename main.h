@@ -15,3 +15,23 @@
 #define WHEN_DONE(count, a, b)                                                 \
   WHEN_DONE_SELECT_EXPAND(WHEN_DONE_FINISHED(count), a, b)
 #define DECREMENT(count) PASTE_EXPAND_2(DECREMENT_, count)
+
+#define EMPTY()
+#define DEFER(x) x EMPTY()
+#define OBSTRUCT(...) __VA_ARGS__ DEFER(EMPTY)()
+#define EAT(...)
+#define EXPAND(...) __VA_ARGS__
+
+#define EVAL(...) EVAL1(EVAL1(EVAL1(EVAL1(__VA_ARGS__))))
+#define EVAL1(...) EVAL2(EVAL2(EVAL2(EVAL2(__VA_ARGS__))))
+#define EVAL2(...) EVAL3(EVAL3(EVAL3(EVAL3(__VA_ARGS__))))
+#define EVAL3(...) EVAL4(EVAL4(EVAL4(EVAL4(__VA_ARGS__))))
+#define EVAL4(...) EVAL5(EVAL5(EVAL5(EVAL5(__VA_ARGS__))))
+#define EVAL5(...) __VA_ARGS__
+
+#define REPEAT(count)                                                          \
+  HI WHEN_DONE(count, EAT,                                                     \
+               EXPAND)(OBSTRUCT(REPEAT_INDIRECT)()(DECREMENT(count)))
+#define REPEAT_INDIRECT() REPEAT
+
+EVAL(REPEAT(1 1 1 1 1 1 TAIL))
