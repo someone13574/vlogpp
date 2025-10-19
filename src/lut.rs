@@ -1,63 +1,111 @@
 use std::iter::once;
 
-use crate::expr::ExprContent;
-use crate::global_scope::GlobalScope;
-use crate::r#macro::MacroID;
+use crate::expr::Expr;
+use crate::r#macro::{Macro, MacroID};
+use crate::registry::Registry;
+use crate::scope::global::GlobalScope;
 
-pub fn new_lut_macro(
-    name: &str,
-    input_names: &[&str],
-    output_name: &str,
-    outputs: &[bool],
-    map_output_to_input_idx: Option<usize>,
-    global_scope: &mut GlobalScope,
-) -> MacroID {
-    assert!(outputs.len() >= 1 && outputs.len().is_power_of_two());
-    let num_inputs = outputs.len().ilog2() as usize;
-    assert_eq!(num_inputs, input_names.len());
+#[derive(Clone)]
+pub struct Lut {
+    pub name: &'static str,
 
-    let scope_id = global_scope.new_local_scope();
-    let vars = input_names
-        .iter()
-        .map(|x| global_scope.get_mut_scope(scope_id).new_var(x, true))
-        .collect::<Vec<_>>();
-    global_scope.get_mut_scope(scope_id).output_names = Some(vec![output_name.to_string()]);
+    pub input_names: &'static [&'static str],
+    pub output_name: &'static str,
 
-    let paste_macro = global_scope.paste_macro(num_inputs + 1, true);
-    let prefix = global_scope.get_alias(name, true);
-    let exprs = once(ExprContent::Text(format!("{prefix}_")))
-        .chain(vars.iter().map(|var| ExprContent::Var(*var)))
-        .map(|content| global_scope.get_mut_scope(scope_id).new_expr(content, None))
-        .collect::<Vec<_>>();
+    pub outputs: &'static [bool],
+    pub output_to_input: Option<usize>,
+}
 
-    for (idx, &output) in outputs.iter().enumerate() {
-        assert_eq!(
-            global_scope.defines.insert(
+impl Lut {
+    pub fn make_macro(&self, global_scope: &mut GlobalScope) -> MacroID {
+        assert!(!self.outputs.is_empty() && self.outputs.len().is_power_of_two());
+
+        let num_inputs = self.outputs.len().ilog2() as usize;
+        assert_eq!(num_inputs, self.input_names.len());
+
+        let mut scope = global_scope.new_scope();
+        let vars = self
+            .input_names
+            .iter()
+            .map(|name| scope.new_var(name, true))
+            .collect::<Vec<_>>();
+        scope.set_outputs(vec![self.output_name.to_string()]);
+
+        let paste_macro = Registry::paste_macro(scope.global, num_inputs + 1, true);
+        let prefix = scope.get_alias(self.name, true);
+
+        for (idx, &output) in self.outputs.iter().enumerate() {
+            scope.define(
                 format!("{prefix}_{:0len$b}", idx, len = num_inputs),
                 if output {
                     "1".to_string()
                 } else {
                     "0".to_string()
                 },
-            ),
-            None
-        );
+            );
+        }
+
+        scope.new_macro(Macro {
+            scope_id: scope.local,
+            name: prefix.clone(),
+            expr: Expr::Call {
+                r#macro: Box::new(Expr::Macro(paste_macro)),
+                args: once(Expr::Text(format!("{prefix}_")))
+                    .chain(vars.iter().map(|&var| Expr::Var(var)))
+                    .collect(),
+            },
+            inputs: vars,
+            output_to_input: self.output_to_input,
+        })
     }
 
-    let body = global_scope
-        .get_mut_scope(scope_id)
-        .new_expr(ExprContent::List(exprs), Some((paste_macro, None)));
-    let macro_id = global_scope.new_macro(&prefix, body, vars, scope_id);
-    global_scope
-        .macros
-        .get_mut(&macro_id)
-        .unwrap()
-        .map_output_to_input_idx = map_output_to_input_idx;
-    assert_eq!(
-        global_scope.modules.insert(name.to_string(), macro_id),
-        None,
-        "Module `{name}` redefined."
-    );
+    pub fn not() -> Self {
+        Self {
+            name: "$_NOT_",
+            input_names: &["A"],
+            output_name: "Y",
+            outputs: &[true, false],
+            output_to_input: None,
+        }
+    }
 
-    macro_id
+    pub fn or() -> Self {
+        Self {
+            name: "$_OR_",
+            input_names: &["A", "B"],
+            output_name: "Y",
+            outputs: &[false, true, true, true],
+            output_to_input: None,
+        }
+    }
+
+    pub fn and() -> Self {
+        Self {
+            name: "$_AND_",
+            input_names: &["A", "B"],
+            output_name: "Y",
+            outputs: &[false, false, false, true],
+            output_to_input: None,
+        }
+    }
+
+    pub fn xor() -> Self {
+        Self {
+            name: "$_XOR_",
+            input_names: &["A", "B"],
+            output_name: "Y",
+            outputs: &[false, true, true, false],
+            output_to_input: None,
+        }
+    }
+
+    pub fn dff_p() -> Self {
+        Self {
+            name: "$_DFF_P_",
+            input_names: &["C", "D", "pQ"],
+            output_name: "Q",
+            outputs: &[false, true, false, true, false, false, true, true],
+            output_to_input: Some(2),
+        }
+    }
 }

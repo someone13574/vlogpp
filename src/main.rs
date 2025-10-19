@@ -1,63 +1,36 @@
-use std::fs;
+// use crate::global_scope::GlobalScope;
+// use crate::lut::new_lut_macro;
+// use crate::netlist::Netlist;
 
-use crate::global_scope::GlobalScope;
-use crate::yosys::Yosys;
+use crate::lut::Lut;
+use crate::netlist::Netlist;
+use crate::registry::Registry;
+use crate::scope::global::GlobalScope;
 
 pub mod expr;
-pub mod global_scope;
-pub mod local_scope;
 pub mod lut;
 pub mod r#macro;
 pub mod module;
-pub mod recursion;
-pub mod yosys;
+pub mod netlist;
+pub mod registry;
+pub mod scope;
 
 fn main() {
-    let yosys = serde_json::from_str::<Yosys>(&fs::read_to_string("design.json").unwrap()).unwrap();
-    let mut global_scope = GlobalScope::new(yosys);
-    global_scope.decrement_macro();
+    let netlist = Netlist::new(
+        "circuits/vlogpp_repeat_dec.v",
+        true,
+        &[("WIDTH", "4", "vlogpp_repeat_dec")],
+    );
+    let registry = Registry::new()
+        .register_lut(Lut::not())
+        .register_lut(Lut::or())
+        .register_lut(Lut::and())
+        .register_lut(Lut::xor())
+        .register_lut(Lut::dff_p())
+        .add_netlist(netlist);
 
-    // new_lut_macro(
-    //     "$_OR_",
-    //     &["A", "B"],
-    //     "Y",
-    //     &[false, true, true, true],
-    //     None,
-    //     &mut global_scope,
-    // );
-    // new_lut_macro(
-    //     "$_AND_",
-    //     &["A", "B"],
-    //     "Y",
-    //     &[false, false, false, true],
-    //     None,
-    //     &mut global_scope,
-    // );
-    // new_lut_macro(
-    //     "$_XOR_",
-    //     &["A", "B"],
-    //     "Y",
-    //     &[false, true, true, false],
-    //     None,
-    //     &mut global_scope,
-    // );
-    // new_lut_macro(
-    //     "$_DFF_P_",
-    //     &["C", "D", "pQ"],
-    //     "Q",
-    //     &[false, true, false, true, false, false, true, true],
-    //     Some(2),
-    //     &mut global_scope,
-    // );
-    // new_lut_macro(
-    //     "$_NOT_",
-    //     &["A"],
-    //     "Y",
-    //     &[true, false],
-    //     None,
-    //     &mut global_scope,
-    // );
-    // global_scope.get_root_module().unwrap();
+    let mut global_scope = GlobalScope::new(registry);
+    Registry::top_module(&mut global_scope).unwrap();
 
-    println!("{}", global_scope);
+    println!("{global_scope}");
 }

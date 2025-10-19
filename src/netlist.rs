@@ -1,12 +1,52 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::Path;
+use std::process::Command;
 
 use ordermap::OrderMap;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct Yosys {
+pub struct Netlist {
     pub creator: String,
     pub modules: HashMap<String, Module>,
+}
+
+impl Netlist {
+    pub fn new<P: AsRef<Path>>(file: P, display: bool, top_params: &[(&str, &str, &str)]) -> Self {
+        let display_command = if display {
+            "show -stretch -format ps -viewer evince;"
+        } else {
+            ""
+        };
+
+        let params = top_params
+            .iter()
+            .map(|(k, v, module)| format!("chparam -set {k} {v} {module};"))
+            .collect::<Vec<_>>()
+            .join("");
+
+        let commands = indoc::formatdoc! {"
+            read_verilog -sv {};
+            {params}
+            hierarchy -check -auto-top;
+            proc;; memory;; fsm;; wreduce;; opt -full;;
+            techmap;; opt -full;;
+            splitnets -ports;; expose -dff -cut;; opt -full;;
+            clean -purge;
+            {}
+            write_json design.json", file.as_ref().display(), display_command};
+
+        Command::new("yosys")
+            .arg("-p")
+            .arg(commands)
+            .status()
+            .expect("Yosys netlist generation failed");
+
+        let buffer = BufReader::new(File::open("design.json").unwrap());
+        serde_json::from_reader(buffer).unwrap()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
