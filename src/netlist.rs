@@ -4,8 +4,9 @@ use std::io::BufReader;
 use std::path::Path;
 use std::process::Command;
 
-use ordermap::OrderMap;
 use serde::Deserialize;
+
+use crate::Map;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Netlist {
@@ -52,8 +53,8 @@ impl Netlist {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Module {
     pub attributes: HashMap<String, String>,
-    pub ports: OrderMap<String, Port>,
-    pub cells: OrderMap<String, Cell>,
+    pub ports: Map<String, Port>,
+    pub cells: Map<String, Cell>,
 }
 
 impl Module {
@@ -106,8 +107,8 @@ pub enum PortDirection {
 pub struct Cell {
     #[serde(rename = "type")]
     pub kind: String,
-    pub port_directions: OrderMap<String, PortDirection>,
-    pub connections: OrderMap<String, Wire>,
+    pub port_directions: Map<String, PortDirection>,
+    pub connections: Map<String, Wire>,
 }
 
 impl Cell {

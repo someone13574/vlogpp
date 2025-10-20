@@ -1,7 +1,3 @@
-// use crate::global_scope::GlobalScope;
-// use crate::lut::new_lut_macro;
-// use crate::netlist::Netlist;
-
 use crate::lut::Lut;
 use crate::netlist::Netlist;
 use crate::registry::Registry;
@@ -15,11 +11,23 @@ pub mod netlist;
 pub mod registry;
 pub mod scope;
 
+#[cfg(not(feature = "obfuscate"))]
+pub type Map<K, V> = ordermap::OrderMap<K, V>;
+
+#[cfg(not(feature = "obfuscate"))]
+pub type Set<T> = ordermap::OrderSet<T>;
+
+#[cfg(feature = "obfuscate")]
+pub type Map<K, V> = std::collections::HashMap<K, V>;
+
+#[cfg(feature = "obfuscate")]
+pub type Set<T> = std::collections::HashSet<T>;
+
 fn main() {
     let netlist = Netlist::new(
         "circuits/vlogpp_repeat_dec.v",
         true,
-        &[("WIDTH", "4", "vlogpp_repeat_dec")],
+        &[("WIDTH", "32", "vlogpp_repeat_dec")],
     );
     let registry = Registry::new()
         .register_lut(Lut::not())
