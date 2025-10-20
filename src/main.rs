@@ -27,7 +27,7 @@ fn main() {
     let netlist = Netlist::new(
         "circuits/vlogpp_repeat_dec.v",
         true,
-        &[("WIDTH", "32", "vlogpp_repeat_dec")],
+        &[("WIDTH", "4", "vlogpp_repeat_dec")],
     );
     let registry = Registry::new()
         .register_lut(Lut::not())
