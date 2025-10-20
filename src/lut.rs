@@ -1,5 +1,6 @@
 use std::iter::once;
 
+use crate::PREFIX_SEP;
 use crate::expr::Expr;
 use crate::r#macro::{Macro, MacroID};
 use crate::registry::Registry;
@@ -36,7 +37,7 @@ impl Lut {
 
         for (idx, &output) in self.outputs.iter().enumerate() {
             scope.define(
-                format!("{prefix}_{:0len$b}", idx, len = num_inputs),
+                format!("{prefix}{PREFIX_SEP}{:0len$b}", idx, len = num_inputs),
                 if output {
                     "1".to_string()
                 } else {
@@ -47,10 +48,10 @@ impl Lut {
 
         scope.new_macro(Macro {
             scope_id: scope.id,
-            name: prefix.clone(),
+            name: scope.get_alias(self.name, false),
             expr: Expr::Call {
                 r#macro: Box::new(Expr::Macro(paste_macro)),
-                args: once(Expr::Text(format!("{prefix}_")))
+                args: once(Expr::Text(format!("{prefix}{PREFIX_SEP}")))
                     .chain(vars.iter().map(|&var| Expr::Var(var)))
                     .collect(),
             },

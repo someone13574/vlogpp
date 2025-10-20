@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::PREFIX_SEP;
 use crate::expr::Expr;
 use crate::lut::Lut;
 use crate::r#macro::{Macro, MacroID};
@@ -281,8 +282,14 @@ impl Registry {
         let eat = Registry::empty_macro(scope.global);
 
         let prefix = scope.get_alias("IF", true);
-        scope.define(format!("{prefix}_0"), scope.get_macro(eat).name.clone());
-        scope.define(format!("{prefix}_1"), scope.get_macro(expand).name.clone());
+        scope.define(
+            format!("{prefix}{PREFIX_SEP}0"),
+            scope.get_macro(eat).name.clone(),
+        );
+        scope.define(
+            format!("{prefix}{PREFIX_SEP}1"),
+            scope.get_macro(expand).name.clone(),
+        );
 
         let paste = Registry::paste_macro(scope.global, 2, true);
 
@@ -292,7 +299,7 @@ impl Registry {
             name: scope.get_alias("IF", false),
             expr: Expr::Call {
                 r#macro: Box::new(Expr::Macro(paste)),
-                args: vec![Expr::Text(format!("{prefix}_")), Expr::Var(var)],
+                args: vec![Expr::Text(format!("{prefix}{PREFIX_SEP}")), Expr::Var(var)],
             },
             inputs: vec![var],
             output_to_input: None,

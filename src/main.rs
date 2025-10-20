@@ -13,22 +13,20 @@ pub mod scope;
 
 #[cfg(not(feature = "obfuscate"))]
 pub type Map<K, V> = ordermap::OrderMap<K, V>;
-
 #[cfg(not(feature = "obfuscate"))]
 pub type Set<T> = ordermap::OrderSet<T>;
+#[cfg(not(feature = "obfuscate"))]
+const PREFIX_SEP: &str = "_";
 
 #[cfg(feature = "obfuscate")]
 pub type Map<K, V> = std::collections::HashMap<K, V>;
-
 #[cfg(feature = "obfuscate")]
 pub type Set<T> = std::collections::HashSet<T>;
+#[cfg(feature = "obfuscate")]
+const PREFIX_SEP: &'static str = "";
 
 fn main() {
-    let netlist = Netlist::new(
-        "circuits/vlogpp_repeat_dec.v",
-        true,
-        &[("WIDTH", "4", "vlogpp_repeat_dec")],
-    );
+    let netlist = Netlist::new("circuits/counter.v", true, &[]);
     let registry = Registry::new()
         .register_lut(Lut::not())
         .register_lut(Lut::or())
@@ -38,9 +36,6 @@ fn main() {
         .add_netlist(netlist);
 
     let mut global_scope = GlobalScope::new(registry);
-    Registry::if_macro(&mut global_scope);
-    Registry::obstruct_macro(&mut global_scope);
-    Registry::eval_multiplier(&mut global_scope, 5);
     Registry::top_module(&mut global_scope).unwrap();
 
     println!("{global_scope}");
