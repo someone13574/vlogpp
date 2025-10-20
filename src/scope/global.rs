@@ -103,7 +103,7 @@ impl GlobalScope {
 
     #[cfg(feature = "obfuscate")]
     pub fn get_alias(&self, _name: &str, prefix: bool) -> String {
-        const TRIES_PER_LENGTH: usize = 256;
+        const TRIES_PER_LENGTH: usize = 1024;
 
         use rand::rngs::SmallRng;
         use rand::{Rng, SeedableRng};
@@ -116,8 +116,17 @@ impl GlobalScope {
                 let idx = rng.random_range(0..26);
                 alias.push(('A'..='Z').nth(idx).unwrap());
                 for _ in 1..len {
-                    let idx = rng.random_range(0..36);
-                    alias.push(('A'..='Z').chain('0'..='9').nth(idx).unwrap());
+                    use std::iter::once;
+
+                    let idx = rng.random_range(0..63);
+                    alias.push(
+                        ('A'..='Z')
+                            .chain('a'..='z')
+                            .chain('0'..='9')
+                            .chain(once('_'))
+                            .nth(idx)
+                            .unwrap(),
+                    );
                 }
 
                 if self.name_available(&alias, prefix) {
@@ -154,14 +163,11 @@ impl Display for GlobalScope {
         }
 
         for r#macro in self.macros.values() {
-            lines.insert(format!(
-                "{}",
-                if cfg!(feature = "obfuscate") {
-                    r#macro.emit(self).replace(", ", ",")
-                } else {
-                    r#macro.emit(self)
-                }
-            ));
+            lines.insert(if cfg!(feature = "obfuscate") {
+                r#macro.emit(self).replace(", ", ",")
+            } else {
+                r#macro.emit(self)
+            });
         }
 
         for line in lines {

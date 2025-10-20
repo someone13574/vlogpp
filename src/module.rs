@@ -14,7 +14,7 @@ struct WireInfo {
 
     pub expr: Option<Expr>,
     pub downstream_expr: Option<Expr>,
-    pub bundled_expr: Option<(VarID, Expr, usize)>,
+    pub bundled_expr: Option<(VarID, Expr, Vec<VarID>)>,
 
     pub split_delta: Option<usize>,
     pub split_idx_lb: Option<usize>,
@@ -142,32 +142,41 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
             .map(|wire| wire_infos.get(wire).unwrap().consumers)
             .sum();
 
-        let bundle_var = if output_wires.len() > 1 {
-            Some(scope.new_var(&format!("bundleof{}_", output_wires.len()), false, false))
-        } else {
-            None
-        };
+        if output_wires.len() > 1 {
+            let bundle_var =
+                scope.new_var(&format!("bundleof{}_", output_wires.len()), false, false);
+            let expanded_vars = (0..output_wires.len())
+                .map(|_| scope.new_var("bt", false, false))
+                .collect::<Vec<_>>();
+            let bundle_expr = Some((bundle_var, Expr::Var(bundle_var), expanded_vars.clone()));
 
-        for &wire in &output_wires {
-            let wire_info = wire_infos.get_mut(&wire).unwrap();
+            for (&wire, &temp) in output_wires.iter().zip(expanded_vars.iter()) {
+                let wire_info = wire_infos.get_mut(&wire).unwrap();
+                wire_info.expr = Some(expr.clone());
+                wire_info.split_idx_lb = Some(split_idx_lb);
+                wire_info.split_delta = Some(2);
+                wire_info
+                    .input_wires
+                    .extend(input_wires.iter().map(|(wire, _)| wire));
+                wire_info.downstream_expr = Some(Expr::Var(temp));
+                wire_info.bundled_expr = bundle_expr.clone();
+
+                var_wires.insert(temp, wire);
+            }
+        } else {
+            let wire = output_wires.first().unwrap();
+            let wire_info = wire_infos.get_mut(wire).unwrap();
             wire_info.expr = Some(expr.clone());
             wire_info.split_idx_lb = Some(split_idx_lb);
             wire_info
                 .input_wires
                 .extend(input_wires.iter().map(|(wire, _)| wire));
 
-            if total_consumers > 1 || cell.output_connections().count() > 1 {
+            if total_consumers > 1 {
                 let var_id = scope.new_var("t", false, false);
-                var_wires.insert(var_id, wire);
+                var_wires.insert(var_id, *wire);
                 wire_info.downstream_expr = Some(Expr::Var(var_id));
-
-                if let Some(bundle_var) = bundle_var {
-                    wire_info.bundled_expr =
-                        Some((bundle_var, Expr::Var(bundle_var), output_wires.len()));
-                    wire_info.split_delta = Some(2);
-                } else {
-                    wire_info.split_delta = Some(1);
-                }
+                wire_info.split_delta = Some(1);
             } else {
                 wire_info.split_delta = Some(0);
             }
@@ -466,6 +475,7 @@ fn add_to_split(
             .take(target_split_idx + 1)
             .rev()
         {
+            // Add source expr
             if var_info.split_idx_ub.unwrap() == split_idx && var_info.split_delta.unwrap() != 0 {
                 if prev_input_idx.is_some_and(|prev_input_idx| prev_input_idx == split.output_count)
                 {
@@ -474,23 +484,27 @@ fn add_to_split(
                 break;
             }
 
+            // Propagation
             if var_info.split_idx_ub.unwrap() + 1 == split_idx && var_info.bundled_expr.is_some() {
-                let (bundle_var, bundle_var_expr, expanded_len) =
+                // Add bundle var to expr
+                let (bundle_var, bundle_var_expr, expanded_vars) =
                     var_info.bundled_expr.as_ref().unwrap();
                 if prev_input_idx.is_some_and(|prev_input_idx| {
-                    prev_input_idx + 1 == split.output_count + expanded_len
+                    prev_input_idx + 1 == split.output_count + expanded_vars.len()
                 }) {
                     split.exprs.push(bundle_var_expr.clone());
-                    split.output_count += expanded_len;
+                    split.output_count += expanded_vars.len();
                 }
 
-                if let Some(idx) = split.vars.iter().position(|input| input == bundle_var) {
-                    prev_input_idx = Some(idx);
+                // Add bundle var to inputs
+                if split.vars.contains(bundle_var) {
+                    break;
                 } else {
                     prev_input_idx = Some(split.vars.len());
                     split.vars.push(*bundle_var);
                 }
             } else {
+                // Add single var to expr
                 if prev_input_idx.is_some_and(|prev_input_idx| prev_input_idx == split.output_count)
                 {
                     split
@@ -499,9 +513,20 @@ fn add_to_split(
                     split.output_count += 1;
                 }
 
-                if let Some(idx) = split.vars.iter().position(|input| *input == var_id) {
-                    prev_input_idx = Some(idx);
+                if let Some((_bundle_var, _expr, expanded_vars)) = var_info.bundled_expr.as_ref() {
+                    if expanded_vars
+                        .iter()
+                        .any(|expanded| split.vars.contains(expanded))
+                    {
+                        break;
+                    } else {
+                        prev_input_idx = Some(split.vars.len() + expanded_vars.len() - 1);
+                        split.vars.extend(expanded_vars);
+                    }
+                } else if split.vars.contains(&var_id) {
+                    break;
                 } else {
+                    // Add single var to inputs
                     prev_input_idx = Some(split.vars.len());
                     split.vars.push(var_id);
                 }

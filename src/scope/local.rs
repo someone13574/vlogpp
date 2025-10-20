@@ -60,7 +60,7 @@ impl LocalScope {
 
     #[cfg(feature = "obfuscate")]
     pub fn new_var(&mut self, name: &str, map_input: bool, variadic: bool) -> VarID {
-        const TRIES_PER_LENGTH: usize = 256;
+        const TRIES_PER_LENGTH: usize = 1024;
 
         use rand::rngs::SmallRng;
         use rand::{Rng, SeedableRng};
@@ -73,8 +73,17 @@ impl LocalScope {
                 let idx = rng.random_range(0..26);
                 alias.push(('a'..='z').nth(idx).unwrap());
                 for _ in 1..len {
-                    let idx = rng.random_range(0..36);
-                    alias.push(('a'..='z').chain('0'..='9').nth(idx).unwrap());
+                    use std::iter::once;
+
+                    let idx = rng.random_range(0..63);
+                    alias.push(
+                        ('A'..='Z')
+                            .chain('a'..='z')
+                            .chain('0'..='9')
+                            .chain(once('_'))
+                            .nth(idx)
+                            .unwrap(),
+                    );
                 }
 
                 if !self.vars.values().any(|existing| existing.name == alias) {
