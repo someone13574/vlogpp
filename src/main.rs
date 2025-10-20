@@ -1,9 +1,11 @@
+use crate::lint::lint_directory;
 use crate::lut::Lut;
 use crate::netlist::Netlist;
 use crate::registry::Registry;
 use crate::scope::global::GlobalScope;
 
 pub mod expr;
+pub mod lint;
 pub mod lut;
 pub mod r#macro;
 pub mod module;
@@ -23,15 +25,17 @@ pub type Map<K, V> = std::collections::HashMap<K, V>;
 #[cfg(feature = "obfuscate")]
 pub type Set<T> = std::collections::HashSet<T>;
 #[cfg(feature = "obfuscate")]
-const PREFIX_SEP: &'static str = "";
+const PREFIX_SEP: &str = "";
 
 fn main() {
+    lint_directory("circuits");
+
     let netlist = Netlist::new(
-        "circuits/vlogpp_repeat_dec.v",
+        "circuits/vlogpp_repeat_dec.sv",
         true,
         &[("WIDTH", "4", "vlogpp_repeat_dec")],
     );
-    let netlist2 = Netlist::new("circuits/counter.v", false, &[]);
+    let netlist2 = Netlist::new("circuits/counter.sv", false, &[]);
 
     let registry = Registry::new()
         .register_lut(Lut::not())

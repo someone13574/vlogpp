@@ -39,11 +39,12 @@ impl Netlist {
             {}
             write_json design.json", file.as_ref().display(), display_command};
 
-        Command::new("yosys")
+        let status = Command::new("yosys")
             .arg("-p")
             .arg(commands)
             .status()
             .expect("Yosys netlist generation failed");
+        assert!(status.success());
 
         let buffer = BufReader::new(File::open("design.json").unwrap());
         serde_json::from_reader(buffer).unwrap()
