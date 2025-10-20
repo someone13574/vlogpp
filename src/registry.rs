@@ -77,23 +77,26 @@ impl Registry {
         None
     }
 
-    pub fn top_module(global_scope: &mut GlobalScope) -> Option<MacroID> {
-        if let Some(name) = global_scope
+    pub fn top_modules(global_scope: &mut GlobalScope) -> Vec<MacroID> {
+        let mut macros = Vec::new();
+
+        for name in global_scope
             .registry()
             .modules
             .iter()
-            .find(|(_, module)| {
+            .filter(|(_, module)| {
                 module
                     .attributes
                     .get("top")
                     .is_some_and(|value| u32::from_str_radix(value, 2).unwrap() != 0)
             })
             .map(|(name, _)| name.to_string())
+            .collect::<Vec<_>>()
         {
-            Registry::module(global_scope, &name)
-        } else {
-            None
+            macros.push(Registry::module(global_scope, &name).unwrap());
         }
+
+        macros
     }
 
     pub fn paste_macro(global_scope: &mut GlobalScope, inputs: usize, expand: bool) -> MacroID {
