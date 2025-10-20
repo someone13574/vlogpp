@@ -26,17 +26,27 @@ pub type Set<T> = std::collections::HashSet<T>;
 const PREFIX_SEP: &'static str = "";
 
 fn main() {
-    let netlist = Netlist::new("circuits/counter.v", true, &[]);
+    let netlist = Netlist::new(
+        "circuits/vlogpp_repeat_dec.v",
+        true,
+        &[("WIDTH", "4", "vlogpp_repeat_dec")],
+    );
+    let netlist2 = Netlist::new("circuits/counter.v", false, &[]);
+
     let registry = Registry::new()
         .register_lut(Lut::not())
         .register_lut(Lut::or())
         .register_lut(Lut::and())
         .register_lut(Lut::xor())
         .register_lut(Lut::dff_p())
-        .add_netlist(netlist);
+        .add_netlist(netlist)
+        .add_netlist(netlist2);
 
     let mut global_scope = GlobalScope::new(registry);
-    Registry::top_module(&mut global_scope).unwrap();
+    Registry::top_modules(&mut global_scope);
+    Registry::eval_multiplier(&mut global_scope, 5);
+    Registry::obstruct_macro(&mut global_scope);
+    Registry::if_macro(&mut global_scope);
 
     println!("{global_scope}");
 }
