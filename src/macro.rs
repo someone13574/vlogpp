@@ -1,7 +1,3 @@
-// use crate::expr::{ExprID, VarID};
-// use crate::global_scope::GlobalScope;
-// use crate::local_scope::LocalScopeID;
-
 use crate::expr::{Expr, VarID};
 use crate::scope::global::GlobalScope;
 use crate::scope::local::LocalScopeID;
@@ -17,6 +13,8 @@ pub struct Macro {
 
     pub inputs: Vec<VarID>,
     pub output_to_input: Option<usize>,
+
+    pub doc_name: Option<String>,
 }
 
 impl Macro {
@@ -59,8 +57,35 @@ impl Macro {
 
     pub fn emit(&self, global_scope: &GlobalScope) -> String {
         let scope = global_scope.get_scope(self.scope_id);
+        let docs = if let Some(doc_name) = &self.doc_name {
+            if cfg!(feature = "obfuscate") {
+                String::new()
+            } else {
+                format!(
+                    "// Module: `{doc_name}`, Inputs: {}, Outputs: {}\n",
+                    self.inputs
+                        .iter()
+                        .map(|var_id| {
+                            scope
+                                .local()
+                                .input_map
+                                .iter()
+                                .find(|(_, id)| *id == var_id)
+                                .unwrap()
+                                .0
+                                .as_str()
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    scope.local().output_names.as_ref().unwrap().join(", ")
+                )
+            }
+        } else {
+            String::new()
+        };
+
         format!(
-            "#define {}({}) {}",
+            "{docs}#define {}({}) {}",
             self.name,
             self.inputs
                 .iter()

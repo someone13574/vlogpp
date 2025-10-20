@@ -99,6 +99,7 @@ impl Registry {
                 },
                 inputs: vars,
                 output_to_input: None,
+                doc_name: None,
             })
         } else {
             let name = scope.get_alias(&format!("PASTE_{inputs}"), false);
@@ -108,6 +109,7 @@ impl Registry {
                 expr: Expr::Concat(var_exprs),
                 inputs: vars,
                 output_to_input: None,
+                doc_name: None,
             })
         };
 

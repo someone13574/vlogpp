@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 
-use ordermap::OrderMap;
-
 use crate::r#macro::{Macro, MacroID};
 use crate::registry::Registry;
 use crate::scope::local::{LocalScope, LocalScopeID};
 use crate::scope::{MutScope, Scope};
+use crate::{Map, Set};
 
 pub struct GlobalScope {
     registry: Registry,
@@ -15,8 +14,8 @@ pub struct GlobalScope {
     next_macro_id: MacroID,
 
     pub scopes: HashMap<LocalScopeID, LocalScope>,
-    macros: OrderMap<MacroID, Macro>,
-    defines: OrderMap<String, String>,
+    macros: Map<MacroID, Macro>,
+    defines: Map<String, String>,
 }
 
 impl GlobalScope {
@@ -26,8 +25,8 @@ impl GlobalScope {
             next_scope_id: LocalScopeID(0),
             next_macro_id: MacroID(0),
             scopes: HashMap::new(),
-            macros: OrderMap::new(),
-            defines: OrderMap::new(),
+            macros: Map::new(),
+            defines: Map::new(),
         }
     }
 
@@ -84,6 +83,7 @@ impl GlobalScope {
         self.defines.insert(key, value);
     }
 
+    #[cfg(not(feature = "obfuscate"))]
     pub fn get_alias(&self, name: &str, prefix: bool) -> String {
         let mut alias;
         let mut suffix = None;
@@ -101,6 +101,34 @@ impl GlobalScope {
         }
 
         alias
+    }
+
+    #[cfg(feature = "obfuscate")]
+    pub fn get_alias(&self, _name: &str, prefix: bool) -> String {
+        const TRIES_PER_LENGTH: usize = 256;
+
+        use rand::rngs::SmallRng;
+        use rand::{Rng, SeedableRng};
+
+        let mut rng = SmallRng::from_os_rng();
+
+        for len in 1.. {
+            for _ in 0..TRIES_PER_LENGTH {
+                let mut alias = String::with_capacity(len);
+                let idx = rng.random_range(0..26);
+                alias.push(('A'..='Z').nth(idx).unwrap());
+                for _ in 1..len {
+                    let idx = rng.random_range(0..36);
+                    alias.push(('A'..='Z').chain('0'..='9').nth(idx).unwrap());
+                }
+
+                if self.name_available(&alias, prefix) {
+                    return alias;
+                }
+            }
+        }
+
+        unreachable!()
     }
 
     fn name_available(&self, name: &str, prefix: bool) -> bool {
@@ -121,18 +149,32 @@ impl GlobalScope {
 
 impl Display for GlobalScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut lines = Set::new();
+
         for (key, value) in self.defines.iter() {
-            writeln!(f, "#define {key} {value}")?;
+            lines.insert(format!("#define {key} {value}"));
         }
 
         for r#macro in self.macros.values() {
-            writeln!(f, "{}", r#macro.emit(self))?;
+            lines.insert(format!(
+                "{}",
+                if cfg!(feature = "obfuscate") {
+                    r#macro.emit(self).replace(", ", ",")
+                } else {
+                    r#macro.emit(self)
+                }
+            ));
+        }
+
+        for line in lines {
+            writeln!(f, "{line}")?;
         }
 
         Ok(())
     }
 }
 
+#[cfg(not(feature = "obfuscate"))]
 fn preprocess_macro_name(name: &str) -> String {
     name.chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
