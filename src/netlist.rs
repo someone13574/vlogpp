@@ -17,7 +17,7 @@ pub struct Netlist {
 impl Netlist {
     pub fn new<P: AsRef<Path>>(file: P, display: bool, top_params: &[(&str, &str, &str)]) -> Self {
         let display_command = if display {
-            "show -stretch -format ps -viewer evince;"
+            "show -stretch -format ps -viewer evince -colorattr ssc;"
         } else {
             ""
         };
@@ -32,21 +32,32 @@ impl Netlist {
             read_verilog -sv {};
             {params}
             hierarchy -check -auto-top;
+            check;
             proc;; memory;; fsm;; wreduce;; opt -full;;
             techmap;; opt -full;;
             splitnets -ports;; expose -dff -cut;; opt -full;;
             clean -purge;
-            {}
-            write_json design.json", file.as_ref().display(), display_command};
+            extract -mine temp/mined.il
+            read_rtlil temp/mined.il
+            deminout
+            write_rtlil temp/mined.il
+            select *
+            select -del needle*
+            extract -map temp/mined.il
+            splitnets -ports;; expose -dff -cut;; opt -full;;
+            {display_command}
+            write_verilog -noattr temp/design.v", file.as_ref().display()};
 
-        let status = Command::new("yosys")
-            .arg("-p")
-            .arg(commands)
-            .status()
-            .expect("Yosys netlist generation failed");
-        assert!(status.success());
+        assert!(
+            Command::new("yosys/yosys")
+                .arg("-p")
+                .arg(commands)
+                .status()
+                .expect("Couldn't run command")
+                .success()
+        );
 
-        let buffer = BufReader::new(File::open("design.json").unwrap());
+        let buffer = BufReader::new(File::open("temp/design.json").unwrap());
         serde_json::from_reader(buffer).unwrap()
     }
 }

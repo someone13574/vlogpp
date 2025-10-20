@@ -38,7 +38,9 @@ pub fn lint_directory<P: AsRef<Path>>(path: P) {
             prefix_instance: false,
             keyword_forbidden_logic: false,
             keyword_forbidden_always_ff: false,
+            keyword_forbidden_always_comb: false,
             sequential_block_in_always_ff: false,
+            sequential_block_in_always_comb: false,
             ..all_config.syntaxrules
         },
     });

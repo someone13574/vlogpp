@@ -30,12 +30,7 @@ const PREFIX_SEP: &str = "";
 fn main() {
     lint_directory("circuits");
 
-    let netlist = Netlist::new(
-        "circuits/vlogpp_repeat_dec.sv",
-        true,
-        &[("WIDTH", "4", "vlogpp_repeat_dec")],
-    );
-    let netlist2 = Netlist::new("circuits/counter.sv", false, &[]);
+    let netlist = Netlist::new("circuits/adder.sv", true, &[("WIDTH", "4", "adder")]);
 
     let registry = Registry::new()
         .register_lut(Lut::not())
@@ -43,14 +38,10 @@ fn main() {
         .register_lut(Lut::and())
         .register_lut(Lut::xor())
         .register_lut(Lut::dff_p())
-        .add_netlist(netlist)
-        .add_netlist(netlist2);
+        .add_netlist(netlist);
 
     let mut global_scope = GlobalScope::new(registry);
     Registry::top_modules(&mut global_scope);
-    Registry::eval_multiplier(&mut global_scope, 5);
-    Registry::obstruct_macro(&mut global_scope);
-    Registry::if_macro(&mut global_scope);
 
     println!("{global_scope}");
 }
