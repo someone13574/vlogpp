@@ -47,21 +47,19 @@ impl GlobalScope {
     }
 
     pub fn get_scope<'a>(&'a self, id: LocalScopeID) -> Scope<'a> {
-        Scope {
-            global: self,
-            local: id,
-        }
+        Scope { global: self, id }
     }
 
     pub fn get_mut_scope<'a>(&'a mut self, id: LocalScopeID) -> MutScope<'a> {
-        MutScope {
-            global: self,
-            local: id,
-        }
+        MutScope { global: self, id }
     }
 
     pub fn new_macro(&mut self, r#macro: Macro) -> MacroID {
-        assert!(self.name_available(&r#macro.name, false));
+        assert!(
+            self.name_available(&r#macro.name, false),
+            "Name `{}` is already used",
+            r#macro.name
+        );
 
         let id = self.next_macro_id;
         self.next_macro_id.0 += 1;

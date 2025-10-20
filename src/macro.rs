@@ -89,7 +89,7 @@ impl Macro {
             self.name,
             self.inputs
                 .iter()
-                .map(|input| scope.get_var(*input).name.as_str())
+                .map(|input| scope.get_var(*input).input_text())
                 .collect::<Vec<_>>()
                 .join(", "),
             self.expr.emit(scope)

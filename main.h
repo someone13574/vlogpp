@@ -24,10 +24,16 @@
 #define _XOR_(a, b) PASTE_EXPAND_3(_XOR__, a, b)
 // Module: `$_AND_`, Inputs: A, B, Outputs: Y
 #define _AND_(a, b) PASTE_EXPAND_3(_AND__, a, b)
-// Module: `vlogpp_repeat_dec`, Inputs: exit_i, x[0], x[1], x[2], x[3], Outputs: exit, next[0], next[1], next[2], next[3]
-#define VLOGPP_REPEAT_DEC(exit_i, x0, x1, x2, x3) VLOGPP_REPEAT_DEC_0(x0, x1, x2, x3, exit_i, _NOT_(x1))
-#define VLOGPP_REPEAT_DEC_0(x0, x1, x2, x3, exit_i, t0) VLOGPP_REPEAT_DEC_1(x0, x1, x2, x3, exit_i, t0, _NOT_(x2), _OR_(x1, _AND_(t0, x0)))
-#define VLOGPP_REPEAT_DEC_1(x0, x1, x2, x3, exit_i, t0, t, t1) _OR_(_NOT_(_OR_(_OR_(x0, x1), _OR_(x2, x3))), exit_i), _NOT_(x0), _XOR_(t0, x0), _XOR_(t, t1), _XOR_(_NOT_(x3), _OR_(x2, _AND_(t, t1)))
+// Module: `vlogpp_repeat_dec`, Inputs: x[0], x[1], x[2], x[3], Outputs: exit,
+// next[0], next[1], next[2], next[3]
+#define VLOGPP_REPEAT_DEC(x0, x1, x2, x3)                                      \
+  VLOGPP_REPEAT_DEC_0(x0, x1, x2, x3, _NOT_(x1))
+#define VLOGPP_REPEAT_DEC_0(x0, x1, x2, x3, t0)                                \
+  VLOGPP_REPEAT_DEC_1(_NOT_(x0), x1, x2, x3, t0, x0, _NOT_(x2),                \
+                      _OR_(x1, _AND_(t0, x0)))
+#define VLOGPP_REPEAT_DEC_1(t1, x1, x2, x3, t0, x0, t, t2)                     \
+  _NOT_(_OR_(_OR_(t1, x1), _OR_(x2, x3))), t1, _XOR_(t0, x0), _XOR_(t, t2),    \
+      _XOR_(_NOT_(x3), _OR_(x2, _AND_(t, t2)))
 
 #define EMPTY()
 #define DEFER(x) x EMPTY()
@@ -48,7 +54,7 @@
 
 #define REPEAT(exit, x0, x1, x2, x3)                                           \
   WHILE_NOT(exit)                                                              \
-  (HI OBSTRUCT(REPEAT_INDIRECT)()(VLOGPP_REPEAT_DEC(exit, x0, x1, x2, x3)))
+  (__COUNTER__ OBSTRUCT(REPEAT_INDIRECT)()(VLOGPP_REPEAT_DEC(x0, x1, x2, x3)))
 #define REPEAT_INDIRECT() REPEAT
 
-EVAL(REPEAT(0, 1, 1, 0, 0))
+EVAL(REPEAT(0, 1, 1, 1, 0))

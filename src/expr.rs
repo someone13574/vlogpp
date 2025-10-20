@@ -1,5 +1,3 @@
-use std::fmt::{self, Display};
-
 use crate::r#macro::MacroID;
 use crate::scope::Scope;
 
@@ -9,11 +7,20 @@ pub struct VarID(pub usize);
 pub struct Var {
     pub id: VarID,
     pub name: String,
+    pub variadic: bool,
 }
 
-impl Display for Var {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name)
+impl Var {
+    pub fn input_text(&self) -> &str {
+        if self.variadic { "..." } else { &self.name }
+    }
+
+    pub fn expr_text(&self) -> &str {
+        if self.variadic {
+            "__VA_ARGS__"
+        } else {
+            &self.name
+        }
     }
 }
 
@@ -22,8 +29,7 @@ pub enum Expr {
     Var(VarID),
     Macro(MacroID),
     Text(String),
-    List(Vec<Expr>),
-    Concat(Vec<Expr>),
+    List(Vec<Expr>, &'static str),
     Call { r#macro: Box<Expr>, args: Vec<Expr> },
 }
 
@@ -32,7 +38,7 @@ impl Expr {
         match self {
             Expr::Var(var_id) => vec![*var_id],
             Expr::Macro(_) | Expr::Text(_) => Vec::new(),
-            Expr::List(exprs) | Expr::Concat(exprs) => {
+            Expr::List(exprs, _sep) => {
                 exprs
                     .iter()
                     .flat_map(|expr| expr.vars().into_iter())
@@ -50,22 +56,15 @@ impl Expr {
 
     pub fn emit(&self, scope: Scope) -> String {
         match self {
-            Expr::Var(var_id) => scope.get_var(*var_id).name.clone(),
+            Expr::Var(var_id) => scope.get_var(*var_id).expr_text().to_string(),
             Expr::Macro(macro_id) => scope.get_macro(*macro_id).name.clone(),
             Expr::Text(text) => text.clone(),
-            Expr::List(exprs) => {
+            Expr::List(exprs, sep) => {
                 exprs
                     .iter()
                     .map(|expr| expr.emit(scope))
                     .collect::<Vec<_>>()
-                    .join(", ")
-            }
-            Expr::Concat(exprs) => {
-                exprs
-                    .iter()
-                    .map(|expr| expr.emit(scope))
-                    .collect::<Vec<_>>()
-                    .join("##")
+                    .join(sep)
             }
             Expr::Call { r#macro, args } => {
                 format!(

@@ -143,7 +143,7 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
             .sum();
 
         let bundle_var = if output_wires.len() > 1 {
-            Some(scope.new_var(&format!("bundleof{}_", output_wires.len()), false))
+            Some(scope.new_var(&format!("bundleof{}_", output_wires.len()), false, false))
         } else {
             None
         };
@@ -157,7 +157,7 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
                 .extend(input_wires.iter().map(|(wire, _)| wire));
 
             if total_consumers > 1 || cell.output_connections().count() > 1 {
-                let var_id = scope.new_var("t", false);
+                let var_id = scope.new_var("t", false, false);
                 var_wires.insert(var_id, wire);
                 wire_info.downstream_expr = Some(Expr::Var(var_id));
 
@@ -204,9 +204,9 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
         .enumerate()
         .map(|(idx, split)| {
             scope.new_macro(Macro {
-                scope_id: scope.local,
+                scope_id: scope.id,
                 name: scope.get_alias(name, false),
-                expr: Expr::List(split.exprs),
+                expr: Expr::List(split.exprs, ", "),
                 inputs: split.vars,
                 output_to_input: None,
                 doc_name: if idx == 0 {
@@ -222,7 +222,7 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
     for &macro_id in ids.iter().rev() {
         if let Some(next_split) = next_split {
             let r#macro = scope.get_mut_macro(macro_id);
-            let Expr::List(inner) = r#macro.expr.clone() else {
+            let Expr::List(inner, _sep) = r#macro.expr.clone() else {
                 unreachable!();
             };
 
@@ -332,7 +332,7 @@ fn create_inputs(
         wire_info.split_idx_lb = Some(0);
         wire_info.split_delta = Some(0);
 
-        let var_id = scope.new_var(name, true);
+        let var_id = scope.new_var(name, true, false);
         wire_info.input_var = Some(var_id);
         wire_info.expr = Some(Expr::Var(var_id));
         var_wires.insert(var_id, port.wire);

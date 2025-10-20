@@ -24,7 +24,7 @@ impl LocalScope {
     }
 
     #[cfg(not(feature = "obfuscate"))]
-    pub fn new_var(&mut self, name: &str, map_input: bool) -> VarID {
+    pub fn new_var(&mut self, name: &str, map_input: bool, variadic: bool) -> VarID {
         let mut alias;
         let mut suffix = None;
 
@@ -42,7 +42,14 @@ impl LocalScope {
 
         let id = self.next_var_id;
         self.next_var_id.0 += 1;
-        self.vars.insert(id, Var { id, name: alias });
+        self.vars.insert(
+            id,
+            Var {
+                id,
+                name: alias,
+                variadic,
+            },
+        );
 
         if map_input {
             assert!(self.input_map.insert(name.to_string(), id).is_none());
@@ -52,7 +59,7 @@ impl LocalScope {
     }
 
     #[cfg(feature = "obfuscate")]
-    pub fn new_var(&mut self, name: &str, map_input: bool) -> VarID {
+    pub fn new_var(&mut self, name: &str, map_input: bool, variadic: bool) -> VarID {
         const TRIES_PER_LENGTH: usize = 256;
 
         use rand::rngs::SmallRng;
@@ -73,7 +80,14 @@ impl LocalScope {
                 if !self.vars.values().any(|existing| existing.name == alias) {
                     let id = self.next_var_id;
                     self.next_var_id.0 += 1;
-                    self.vars.insert(id, Var { id, name: alias });
+                    self.vars.insert(
+                        id,
+                        Var {
+                            id,
+                            name: alias,
+                            variadic,
+                        },
+                    );
 
                     if map_input {
                         assert!(self.input_map.insert(name.to_string(), id).is_none());
