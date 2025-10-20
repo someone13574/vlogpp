@@ -38,6 +38,9 @@ fn main() {
         .add_netlist(netlist);
 
     let mut global_scope = GlobalScope::new(registry);
+    Registry::if_macro(&mut global_scope);
+    Registry::obstruct_macro(&mut global_scope);
+    Registry::eval_multiplier(&mut global_scope, 5);
     Registry::top_module(&mut global_scope).unwrap();
 
     println!("{global_scope}");

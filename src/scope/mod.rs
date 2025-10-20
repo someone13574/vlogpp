@@ -12,12 +12,12 @@ pub mod local;
 #[derive(Clone, Copy)]
 pub struct Scope<'a> {
     pub global: &'a GlobalScope,
-    pub local: LocalScopeID,
+    pub id: LocalScopeID,
 }
 
 pub struct MutScope<'a> {
     pub global: &'a mut GlobalScope,
-    pub local: LocalScopeID,
+    pub id: LocalScopeID,
 }
 
 impl Scope<'_> {
@@ -30,13 +30,13 @@ impl Scope<'_> {
     }
 
     delegate! {
-        to self.global.scopes.get(&self.local).unwrap() {
+        to self.global.scopes.get(&self.id).unwrap() {
             pub fn get_var(&self, id: VarID) -> &Var;
         }
     }
 
     pub fn local(&self) -> &LocalScope {
-        self.global.scopes.get(&self.local).unwrap()
+        self.global.scopes.get(&self.id).unwrap()
     }
 }
 
@@ -54,14 +54,14 @@ impl<'a> MutScope<'a> {
     }
 
     delegate! {
-        to self.global.scopes.get_mut(&self.local).unwrap() {
-            pub fn new_var(&mut self, name: &str, map_input: bool) -> VarID;
+        to self.global.scopes.get_mut(&self.id).unwrap() {
+            pub fn new_var(&mut self, name: &str, map_input: bool, variadic: bool) -> VarID;
             pub fn set_outputs(&mut self, outputs: Vec<String>);
         }
     }
 
     delegate! {
-        to self.global.scopes.get(&self.local).unwrap() {
+        to self.global.scopes.get(&self.id).unwrap() {
             pub fn get_var(&self, id: VarID) -> &Var;
         }
     }
@@ -69,11 +69,11 @@ impl<'a> MutScope<'a> {
     pub fn scope(&'a self) -> Scope<'a> {
         Scope {
             global: self.global,
-            local: self.local,
+            id: self.id,
         }
     }
 
     pub fn local(&mut self) -> &mut LocalScope {
-        self.global.scopes.get_mut(&self.local).unwrap()
+        self.global.scopes.get_mut(&self.id).unwrap()
     }
 }

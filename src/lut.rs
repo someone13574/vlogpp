@@ -27,7 +27,7 @@ impl Lut {
         let vars = self
             .input_names
             .iter()
-            .map(|name| scope.new_var(name, true))
+            .map(|name| scope.new_var(name, true, false))
             .collect::<Vec<_>>();
         scope.set_outputs(vec![self.output_name.to_string()]);
 
@@ -46,7 +46,7 @@ impl Lut {
         }
 
         scope.new_macro(Macro {
-            scope_id: scope.local,
+            scope_id: scope.id,
             name: prefix.clone(),
             expr: Expr::Call {
                 r#macro: Box::new(Expr::Macro(paste_macro)),
