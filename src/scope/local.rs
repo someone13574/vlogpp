@@ -11,15 +11,18 @@ pub struct LocalScope {
 
     pub input_map: HashMap<String, VarID>,
     pub output_names: Option<Vec<String>>,
+
+    pub prefix_capitalization: Vec<bool>,
 }
 
 impl LocalScope {
-    pub fn new() -> Self {
+    pub fn new(prefix_capitalization: Vec<bool>) -> Self {
         Self {
             next_var_id: VarID(0),
             vars: HashMap::new(),
             input_map: HashMap::new(),
             output_names: None,
+            prefix_capitalization,
         }
     }
 
@@ -71,7 +74,13 @@ impl LocalScope {
             for _ in 0..TRIES_PER_LENGTH {
                 let mut alias = String::with_capacity(len);
                 let idx = rng.random_range(0..26);
-                alias.push(('a'..='z').nth(idx).unwrap());
+
+                alias.push(if *self.prefix_capitalization.get(idx).unwrap() {
+                    ('a'..='z').nth(idx).unwrap()
+                } else {
+                    ('A'..='Z').nth(idx).unwrap()
+                });
+
                 for _ in 1..len {
                     use std::iter::once;
 
@@ -116,12 +125,6 @@ impl LocalScope {
 
     pub fn get_var(&self, id: VarID) -> &Var {
         self.vars.get(&id).unwrap()
-    }
-}
-
-impl Default for LocalScope {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

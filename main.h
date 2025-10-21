@@ -1,82 +1,28 @@
-#define _NOT__0 1
-#define _NOT__1 0
-#define _AND__00 0
-#define _AND__01 0
-#define _AND__10 0
-#define _AND__11 1
 #define _XOR__00 0
 #define _XOR__01 1
 #define _XOR__10 1
 #define _XOR__11 0
-#define _DFF_P__000 0
-#define _DFF_P__001 1
-#define _DFF_P__010 0
-#define _DFF_P__011 1
-#define _DFF_P__100 0
-#define _DFF_P__101 0
-#define _DFF_P__110 1
-#define _DFF_P__111 1
+#define _AND__00 0
+#define _AND__01 0
+#define _AND__10 0
+#define _AND__11 1
 #define _OR__00 0
 #define _OR__01 1
 #define _OR__10 1
 #define _OR__11 1
-#define IF_0 EMPTY
-#define IF_1 EVAL0
-#define PASTE_2(a, b) a##b
-#define PASTE_EXPAND_2(a, b) PASTE_2(a, b)
-// Module: `$_NOT_`, Inputs: A, Outputs: Y
-#define _NOT_(a) PASTE_EXPAND_2(_NOT__, a)
 #define PASTE_3(a, b, c) a##b##c
 #define PASTE_EXPAND_3(a, b, c) PASTE_3(a, b, c)
-// Module: `$_AND_`, Inputs: A, B, Outputs: Y
-#define _AND_(a, b) PASTE_EXPAND_3(_AND__, a, b)
 // Module: `$_XOR_`, Inputs: A, B, Outputs: Y
 #define _XOR_(a, b) PASTE_EXPAND_3(_XOR__, a, b)
-// Module: `inc`, Inputs: in[0], in[1], in[2], in[3], Outputs: out[0], out[1],
-// out[2], out[3]
-#define INC(in0, in1, in2, in3) INC_0(in0, in1, in2, _AND_(in1, in0), in3)
-#define INC_0(in0, in1, in2, t, in3)                                           \
-  _NOT_(in0), _XOR_(in1, in0), _XOR_(in2, t), _XOR_(in3, _AND_(in2, t))
-#define PASTE_4(a, b, c, d) a##b##c##d
-#define PASTE_EXPAND_4(a, b, c, d) PASTE_4(a, b, c, d)
-// Module: `$_DFF_P_`, Inputs: C, D, pQ, Outputs: Q
-#define _DFF_P_(c, d, pq) PASTE_EXPAND_4(_DFF_P__, c, d, pq)
-// Module: `counter`, Inputs: clk, out[2].i, out[3].i, out[0].i, out[1].i,
-// Outputs: out[0], out[1], out[2], out[3]
-#define COUNTER(clk, out0i, out1i, out2i, out3i)                               \
-  COUNTER_0(clk, INC(out0i, out1i, out2i, out3i), out0i, out1i, out2i, out3i)
-#define COUNTER_0(clk, bundleof4_, out0i, out1i, out2i, out3i)                 \
-  COUNTER_1(clk, bundleof4_, out0i, out1i, out2i, out3i)
-#define COUNTER_1(clk, bt, bt0, bt1, bt2, out0i, out1i, out2i, out3i)          \
-  _DFF_P_(clk, bt, out0i), _DFF_P_(clk, bt0, out1i), _DFF_P_(clk, bt1, out2i), \
-      _DFF_P_(clk, bt2, out3i)
+// Module: `$_AND_`, Inputs: A, B, Outputs: Y
+#define _AND_(a, b) PASTE_EXPAND_3(_AND__, a, b)
 // Module: `$_OR_`, Inputs: A, B, Outputs: Y
 #define _OR_(a, b) PASTE_EXPAND_3(_OR__, a, b)
-// Module: `vlogpp_repeat_dec`, Inputs: x[0], x[1], x[2], x[3], Outputs: cont,
-// next[0], next[1], next[2], next[3]
-#define VLOGPP_REPEAT_DEC(x0, x1, x2, x3)                                      \
-  VLOGPP_REPEAT_DEC_0(x0, x1, x2, x3, _NOT_(x1))
-#define VLOGPP_REPEAT_DEC_0(x0, x1, x2, x3, t0)                                \
-  VLOGPP_REPEAT_DEC_1(_NOT_(x0), x1, x2, x3, t0, x0, _NOT_(x2),                \
-                      _OR_(x1, _AND_(t0, x0)))
-#define VLOGPP_REPEAT_DEC_1(t1, x1, x2, x3, t0, x0, t, t2)                     \
-  _OR_(_OR_(t1, x1), _OR_(x2, x3)), t1, _XOR_(t0, x0), _XOR_(t, t2),           \
-      _XOR_(_NOT_(x3), _OR_(x2, _AND_(t, t2)))
-#define EVAL0(...) __VA_ARGS__
-#define EVAL1(...) EVAL0(EVAL0(EVAL0(EVAL0(__VA_ARGS__))))
-#define EVAL2(...) EVAL1(EVAL1(EVAL1(EVAL1(__VA_ARGS__))))
-#define EVAL3(...) EVAL2(EVAL2(EVAL2(EVAL2(__VA_ARGS__))))
-#define EVAL4(...) EVAL3(EVAL3(EVAL3(EVAL3(__VA_ARGS__))))
-#define EVAL5(...) EVAL4(EVAL4(EVAL4(EVAL4(__VA_ARGS__))))
-#define EMPTY(...)
-#define DEFER(x) x EMPTY()
-#define OBSTRUCT(...) __VA_ARGS__ DEFER(EMPTY)()
-#define IF(cont) PASTE_EXPAND_2(IF_, cont)
-
-#define REPEAT(cont, x0, x1, x2, x3, i0, i1, i2, i3)                           \
-  IF(cont)                                                                     \
-  (<COUNTER(1, i0, i1, i2, i3)> OBSTRUCT(REPEAT_INDIRECT)()(                   \
-      VLOGPP_REPEAT_DEC(x0, x1, x2, x3), COUNTER(1, i0, i1, i2, i3)))
-#define REPEAT_INDIRECT() REPEAT
-
-EVAL5(REPEAT(1, 1, 0, 1, 0, 0, 0, 0, 0))
+// Module: `adder`, Inputs: a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], c, Outputs: out[0], out[1], out[2], out[3], out[4], out[5], out[6], out[7], out[8]
+#define ADDER(a0, a1, a2, a3, a4, a5, a6, a7, b0, b1, b2, b3, b4, b5, b6, b7, c) ADDER_0(c, b0, a0, _XOR_(b1, a1), _AND_(b0, a0), b2, a2, b1, a1, b3, a3, b4, a4, b5, a5, b6, a6, b7, a7)
+#define ADDER_0(c, b0, a0, t0, t7, b2, a2, b1, a1, b3, a3, b4, a4, b5, a5, b6, a6, b7, a7) ADDER_1(c, _XOR_(b0, a0), t0, t7, _XOR_(b2, a2), _OR_(_AND_(b1, a1), _AND_(t0, t7)), _XOR_(b3, a3), _AND_(b2, a2), b4, a4, b3, a3, b5, a5, b6, a6, b7, a7)
+#define ADDER_1(c, t, t0, t7, t1, t16, t2, t8, b4, a4, b3, a3, b5, a5, b6, a6, b7, a7) ADDER_2(c, t, _XOR_(t0, t7), _AND_(c, t), t1, t16, t2, t8, _XOR_(b4, a4), _OR_(_OR_(_AND_(b3, a3), _AND_(t2, t8)), _AND_(_AND_(t2, t1), t16)), _XOR_(b5, a5), _AND_(b4, a4), b6, a6, b5, a5, b7, a7)
+#define ADDER_2(c, t, t14, t11, t1, t16, t2, t8, t3, t19, t4, t9, b6, a6, b5, a5, b7, a7) ADDER_3(c, t, t14, t11, _XOR_(t1, t16), _AND_(t14, t11), _XOR_(t2, _OR_(t8, _AND_(t1, t16))), _XOR_(t3, t19), _XOR_(t4, _OR_(t9, _AND_(t3, t19))), b6, a6, _OR_(_AND_(b5, a5), _AND_(t4, t9)), _AND_(t4, t3), t19, b7, a7)
+#define ADDER_3(c, t, t14, t11, t18, t15, t21, t20, t24, b6, a6, t17, t12, t19, b7, a7) ADDER_4(c, t, t14, t11, t18, t15, t21, t20, _AND_(_AND_(t21, t18), t15), t24, _XOR_(b6, a6), _OR_(t17, _AND_(t12, t19)), _AND_(t24, t20), _XOR_(b7, a7), _AND_(b6, a6), b7, a7, t17, t12, t19)
+#define ADDER_4(c, t, t14, t11, t18, t15, t21, t20, t25, t24, t5, t22, t26, t6, t10, b7, a7, t17, t12, t19) ADDER_5(c, t, t14, t11, t18, t15, t21, t20, t25, t24, _XOR_(t5, t22), _AND_(t26, t25), _XOR_(t6, _OR_(t10, _AND_(t5, t22))), b7, a7, t6, t10, _AND_(t6, t5), t17, t12, t19, t26)
+#define ADDER_5(c, t, t14, t11, t18, t15, t21, t20, t25, t24, t23, t28, t27, b7, a7, t6, t10, t13, t17, t12, t19, t26) _XOR_(c, t), _XOR_(t14, t11), _XOR_(t18, t15), _XOR_(t21, _AND_(t18, t15)), _XOR_(t20, t25), _XOR_(t24, _AND_(t20, t25)), _XOR_(t23, t28), _XOR_(t27, _AND_(t23, t28)), _XOR_(_OR_(_OR_(_OR_(_AND_(b7, a7), _AND_(t6, t10)), _AND_(t13, t17)), _AND_(_AND_(t13, t12), t19)), _AND_(_AND_(_AND_(t27, t23), t26), t25))

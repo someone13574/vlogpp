@@ -16,6 +16,8 @@ pub struct GlobalScope {
     pub scopes: HashMap<LocalScopeID, LocalScope>,
     macros: Map<MacroID, Macro>,
     defines: Map<String, String>,
+
+    prefix_capitalization: Vec<bool>,
 }
 
 impl GlobalScope {
@@ -27,6 +29,10 @@ impl GlobalScope {
             scopes: HashMap::new(),
             macros: Map::new(),
             defines: Map::new(),
+            #[cfg(feature = "obfuscate")]
+            prefix_capitalization: rand::random_iter().take(26).collect(),
+            #[cfg(not(feature = "obfuscate"))]
+            prefix_capitalization: vec![false; 26],
         }
     }
 
@@ -42,7 +48,8 @@ impl GlobalScope {
         let id = self.next_scope_id;
         self.next_scope_id.0 += 1;
 
-        self.scopes.insert(id, LocalScope::new());
+        self.scopes
+            .insert(id, LocalScope::new(self.prefix_capitalization.clone()));
         self.get_mut_scope(id)
     }
 
@@ -114,7 +121,13 @@ impl GlobalScope {
             for _ in 0..TRIES_PER_LENGTH {
                 let mut alias = String::with_capacity(len);
                 let idx = rng.random_range(0..26);
-                alias.push(('A'..='Z').nth(idx).unwrap());
+
+                alias.push(if *self.prefix_capitalization.get(idx).unwrap() {
+                    ('A'..='Z').nth(idx).unwrap()
+                } else {
+                    ('a'..='z').nth(idx).unwrap()
+                });
+
                 for _ in 1..len {
                     use std::iter::once;
 
