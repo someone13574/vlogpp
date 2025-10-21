@@ -24,7 +24,7 @@ fn test_adder() {
 
     let mut global_scope = GlobalScope::new(registry);
     let adder = *Registry::top_modules(&mut global_scope).first().unwrap();
-    let macros = format!("{global_scope}");
+    let macro_text = global_scope.emit();
 
     let adder_macro = global_scope.get_macro(adder);
 
@@ -83,7 +83,7 @@ fn test_adder() {
         output_bits.sort_by_key(|(idx, _)| *idx);
 
         let text = format!(
-            "{macros}\n{}({})",
+            "{macro_text}\n{}({})",
             &adder_macro.name,
             inputs
                 .iter()

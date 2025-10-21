@@ -1,3 +1,5 @@
+use colored::Colorize;
+
 use crate::r#macro::MacroID;
 use crate::scope::Scope;
 
@@ -57,8 +59,8 @@ impl Expr {
     pub fn emit(&self, scope: Scope) -> String {
         match self {
             Expr::Var(var_id) => scope.get_var(*var_id).expr_text().to_string(),
-            Expr::Macro(macro_id) => scope.get_macro(*macro_id).name.clone(),
-            Expr::Text(text) => text.clone(),
+            Expr::Macro(macro_id) => scope.get_macro(*macro_id).name.magenta().to_string(),
+            Expr::Text(text) => text.magenta().to_string(),
             Expr::List(exprs, sep) => {
                 exprs
                     .iter()

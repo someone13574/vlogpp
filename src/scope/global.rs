@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 
+use colored::Colorize;
+
 use crate::r#macro::{Macro, MacroID};
 use crate::registry::Registry;
 use crate::scope::local::{LocalScope, LocalScopeID};
@@ -151,6 +153,10 @@ impl GlobalScope {
         unreachable!()
     }
 
+    pub fn emit(&self) -> String {
+        strip_ansi_escapes::strip_str(format!("{self}"))
+    }
+
     fn name_available(&self, name: &str, prefix: bool) -> bool {
         !self
             .macros
@@ -172,7 +178,12 @@ impl Display for GlobalScope {
         let mut lines = Set::new();
 
         for (key, value) in self.defines.iter() {
-            lines.insert(format!("#define {key} {value}"));
+            lines.insert(format!(
+                "{} {} {}",
+                "#define".yellow(),
+                key.magenta(),
+                value.magenta()
+            ));
         }
 
         for r#macro in self.macros.values() {

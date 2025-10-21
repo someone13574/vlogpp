@@ -1,3 +1,5 @@
+use colored::Colorize;
+
 use crate::expr::{Expr, VarID};
 use crate::scope::global::GlobalScope;
 use crate::scope::local::LocalScopeID;
@@ -85,8 +87,10 @@ impl Macro {
         };
 
         format!(
-            "{docs}#define {}({}) {}",
-            self.name,
+            "{}{} {}({}) {}",
+            docs.dimmed(),
+            "#define".yellow(),
+            self.name.magenta(),
             self.inputs
                 .iter()
                 .map(|input| scope.get_var(*input).input_text())
