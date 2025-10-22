@@ -57,7 +57,7 @@ impl<'a> MutScope<'a> {
 
     delegate! {
         to self.global.scopes.get_mut(&self.id).unwrap() {
-            pub fn new_var(&mut self, name: &str, map_input: bool, variadic: bool) -> VarID;
+            pub fn new_var(&mut self, name: &str, map_input: bool, variadic: bool, bundle: Option<VarID>) -> VarID;
             pub fn get_mut_var(&mut self, id: VarID) -> &mut Var;
         }
     }

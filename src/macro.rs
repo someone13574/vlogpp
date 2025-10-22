@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use colored::Colorize;
 use strip_ansi_escapes::strip_str;
 
@@ -110,32 +112,82 @@ impl Macro {
     }
 
     pub fn sort_passthrough_vars(id: MacroID, scope: &mut MutScope) {
-        let mut input_perm = scope
+        let caller_vars = scope
             .get_macro(id)
-            .inputs
+            .calling_split
+            .map(|caller| scope.get_macro(caller).inputs.clone());
+
+        // Get permutation indices per block (single var or bundle of vars)
+        let mut input_blocks_perm = Vec::new();
+        let mut bundle_blocks = HashMap::new();
+        let mut total_idx = 0;
+        let mut last_bundle = None;
+
+        for &input in &scope.get_macro(id).inputs {
+            let block_idx = input_blocks_perm.len();
+
+            if let Some(bundle_var) = scope.get_var(input).bundle_id {
+                if caller_vars
+                    .as_ref()
+                    .is_some_and(|caller_vars| caller_vars.contains(&bundle_var))
+                    && bundle_blocks.get(&bundle_var).is_none()
+                {
+                    bundle_blocks.insert(bundle_var, block_idx);
+                    input_blocks_perm.push((block_idx, total_idx, Vec::new(), 0.0));
+                }
+
+                if let Some(&bundle_block_idx) = bundle_blocks.get(&bundle_var) {
+                    let (_idx, _total_idx, vars, max_score): &mut (usize, usize, Vec<VarID>, f64) =
+                        input_blocks_perm.get_mut(bundle_block_idx).unwrap();
+                    assert!(!vars.contains(&input));
+                    assert!(last_bundle == Some(bundle_var) || vars.is_empty());
+
+                    vars.push(input);
+                    *max_score = max_score.max(
+                        scope
+                            .get_macro(id)
+                            .var_passthrough_score(input, &scope.scope())
+                            .0,
+                    );
+
+                    total_idx += 1;
+                    last_bundle = Some(bundle_var);
+                    continue;
+                }
+            }
+
+            input_blocks_perm.push((
+                block_idx,
+                total_idx,
+                vec![input],
+                scope
+                    .get_macro(id)
+                    .var_passthrough_score(input, &scope.scope())
+                    .0,
+            ));
+            total_idx += 1;
+        }
+
+        input_blocks_perm.sort_by(|(_, _, _, a), (_, _, _, b)| a.partial_cmp(b).unwrap());
+
+        // Get input permuation
+        let input_perm = input_blocks_perm
             .iter()
-            .enumerate()
-            .map(|(idx, input)| {
-                (
-                    idx,
-                    scope
-                        .get_macro(id)
-                        .var_passthrough_score(*input, &scope.scope())
-                        .0,
-                )
+            .flat_map(|(_, total_idx, vars, _)| {
+                vars.iter()
+                    .enumerate()
+                    .map(move |(idx_in_block, _var)| total_idx + idx_in_block)
             })
             .collect::<Vec<_>>();
-        input_perm.sort_by(|(_, a), (_, b)| {
-            assert!(a.is_finite() && b.is_finite());
-            a.partial_cmp(b).unwrap()
-        });
 
+        // Reorder inputs
         let inputs = &mut scope.get_mut_macro(id).inputs;
         *inputs = input_perm
             .iter()
-            .map(|(idx, _)| *inputs.get(*idx).unwrap())
+            .map(|idx| *inputs.get(*idx).unwrap())
             .collect();
 
+        // Reorder caller exprs
         if let Some(caller) = scope
             .get_macro(id)
             .calling_split
@@ -147,9 +199,9 @@ impl Macro {
                 unreachable!();
             };
 
-            *args = input_perm
+            *args = input_blocks_perm
                 .iter()
-                .map(|(idx, _)| args.get(*idx).unwrap().clone())
+                .map(|(idx, _, _, _)| args.get(*idx).unwrap().clone())
                 .collect();
         }
     }
@@ -179,10 +231,13 @@ impl Macro {
         };
         let max_indiv_score = max_expr_score * 2.0;
 
-        (
+        let out = (
             caller_score + indiv_score * caller_max_score,
             caller_max_score + max_indiv_score * caller_max_score,
-        )
+        );
+        assert!(out.0.is_finite());
+        assert!(out.1.is_finite());
+        out
     }
 
     fn is_passthrough_var(&self, id: VarID) -> bool {

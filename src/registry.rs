@@ -114,7 +114,7 @@ impl Registry {
         let vars = ('a'..='z')
             .cycle()
             .take(inputs)
-            .map(|x| scope.new_var(&x.to_string(), false, false))
+            .map(|x| scope.new_var(&x.to_string(), false, false, None))
             .collect::<Vec<_>>();
         let var_exprs = vars.iter().map(|&var| Expr::Var(var)).collect::<Vec<_>>();
 
@@ -162,7 +162,7 @@ impl Registry {
 
         let id = if idx == 0 {
             let mut scope = global_scope.new_scope();
-            let variadic = scope.new_var("variadic", false, true);
+            let variadic = scope.new_var("variadic", false, true, None);
             scope.new_macro(Macro {
                 scope_id: scope.id,
                 name: scope.get_alias("EVAL0", false),
@@ -179,7 +179,7 @@ impl Registry {
                 idx - 1,
             )));
             let mut scope = global_scope.new_scope();
-            let variadic = scope.new_var("variadic", false, true);
+            let variadic = scope.new_var("variadic", false, true, None);
             scope.new_macro(Macro {
                 scope_id: scope.id,
                 name: scope.get_alias(&format!("EVAL{idx}"), false),
@@ -215,7 +215,7 @@ impl Registry {
 
         let mut scope = global_scope.new_scope();
 
-        let variadic = scope.new_var("variadic", false, true);
+        let variadic = scope.new_var("variadic", false, true, None);
         let empty = scope.new_macro(Macro {
             scope_id: scope.id,
             name: scope.get_alias("EMPTY", false),
@@ -240,7 +240,7 @@ impl Registry {
 
         let empty = Registry::empty_macro(scope.global);
 
-        let var = scope.new_var("x", false, false);
+        let var = scope.new_var("x", false, false, None);
         let defer = scope.new_macro(Macro {
             scope_id: scope.id,
             name: scope.get_alias("DEFER", false),
@@ -261,7 +261,7 @@ impl Registry {
             doc_name: None,
         });
 
-        let variadic = scope.new_var("variadic", false, true);
+        let variadic = scope.new_var("variadic", false, true, None);
         let obstruct = scope.new_macro(Macro {
             scope_id: scope.id,
             name: scope.get_alias("OBSTRUCT", false),
@@ -310,7 +310,7 @@ impl Registry {
 
         let paste = Registry::paste_macro(scope.global, 2, true);
 
-        let var = scope.new_var("cont", false, false);
+        let var = scope.new_var("cont", false, false, None);
         let id = scope.new_macro(Macro {
             scope_id: scope.id,
             name: scope.get_alias("IF", false),

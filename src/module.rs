@@ -154,9 +154,9 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
             .sum();
 
         if output_wires.len() > 1 {
-            let bundle_var = scope.new_var(cell_name, false, false);
+            let bundle_var = scope.new_var(cell_name, false, false, None);
             let expanded_vars = (0..output_wires.len())
-                .map(|_| scope.new_var("bt", false, false))
+                .map(|_| scope.new_var("bt", false, false, Some(bundle_var)))
                 .collect::<Vec<_>>();
             let bundle_expr = Some((bundle_var, expanded_vars.clone()));
 
@@ -183,7 +183,7 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
                 .extend(input_wires.iter().map(|(wire, _)| wire));
 
             if total_consumers > 1 {
-                let var_id = scope.new_var("t", false, false);
+                let var_id = scope.new_var("t", false, false, None);
                 var_wires.insert(var_id, *wire);
                 wire_info.downstream_expr = Some(Expr::Var(var_id));
                 wire_info.split_delta = Some(1);
@@ -265,9 +265,9 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
         next_split = Some(macro_id);
     }
 
-    // for &macro_id in ids.iter().rev() {
-    //     Macro::sort_passthrough_vars(macro_id, &mut scope);
-    // }
+    for &macro_id in ids.iter().rev() {
+        Macro::sort_passthrough_vars(macro_id, &mut scope);
+    }
 
     *ids.first().unwrap()
 }
@@ -366,7 +366,7 @@ fn create_inputs(
         wire_info.split_idx_lb = Some(0);
         wire_info.split_delta = Some(0);
 
-        let var_id = scope.new_var(name, true, false);
+        let var_id = scope.new_var(name, true, false, None);
         wire_info.input_var = Some(var_id);
         wire_info.expr = Some(Expr::Var(var_id));
         var_wires.insert(var_id, port.wire);

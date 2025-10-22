@@ -27,7 +27,13 @@ impl LocalScope {
     }
 
     #[cfg(not(feature = "obfuscate"))]
-    pub fn new_var(&mut self, name: &str, map_input: bool, variadic: bool) -> VarID {
+    pub fn new_var(
+        &mut self,
+        name: &str,
+        map_input: bool,
+        variadic: bool,
+        bundle: Option<VarID>,
+    ) -> VarID {
         let mut alias;
         let mut suffix = None;
 
@@ -51,6 +57,7 @@ impl LocalScope {
                 id,
                 name: alias,
                 variadic,
+                bundle_id: bundle,
             },
         );
 
@@ -62,7 +69,13 @@ impl LocalScope {
     }
 
     #[cfg(feature = "obfuscate")]
-    pub fn new_var(&mut self, name: &str, map_input: bool, variadic: bool) -> VarID {
+    pub fn new_var(
+        &mut self,
+        name: &str,
+        map_input: bool,
+        variadic: bool,
+        bundle: Option<VarID>,
+    ) -> VarID {
         const TRIES_PER_LENGTH: usize = 1024;
 
         use rand::rngs::SmallRng;
@@ -104,6 +117,7 @@ impl LocalScope {
                             id,
                             name: alias,
                             variadic,
+                            bundle_id: bundle,
                         },
                     );
 

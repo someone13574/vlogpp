@@ -28,7 +28,7 @@ impl Lut {
         let vars = self
             .input_names
             .iter()
-            .map(|name| scope.new_var(name, true, false))
+            .map(|name| scope.new_var(name, true, false, None))
             .collect::<Vec<_>>();
         scope.local().output_names = Some(vec![self.output_name.to_string()]);
 

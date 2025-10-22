@@ -24,6 +24,7 @@ fn test_submods() {
 
     let mut global_scope = GlobalScope::new(registry);
     let top = *Registry::top_modules(&mut global_scope).first().unwrap();
+    global_scope.variadicify_macros(2);
 
     let macro_text = global_scope.emit();
     let top_macro = global_scope.get_macro(top);

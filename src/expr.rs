@@ -10,6 +10,7 @@ pub struct Var {
     pub id: VarID,
     pub name: String,
     pub variadic: bool,
+    pub bundle_id: Option<VarID>,
 }
 
 impl Var {
