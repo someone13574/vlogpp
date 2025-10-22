@@ -24,6 +24,7 @@ impl Scope<'_> {
     delegate! {
         to self.global {
             pub fn registry(&self) -> &Registry;
+            pub fn get_scope<'a>(&'a self, id: LocalScopeID) -> Scope<'a>;
             pub fn get_macro(&self, id: MacroID) -> &Macro;
             pub fn get_alias(&self, name: &str, prefix: bool) -> String;
         }
@@ -45,6 +46,7 @@ impl<'a> MutScope<'a> {
         to self.global {
             pub fn registry(&self) -> &Registry;
             pub fn registry_mut(&mut self) -> &mut Registry;
+            pub fn get_scope<'b>(&'b self, id: LocalScopeID) -> Scope<'b>;
             pub fn new_macro(&mut self, r#macro: Macro) -> MacroID;
             pub fn get_macro(&self, id: MacroID) -> &Macro;
             pub fn get_mut_macro(&mut self, id: MacroID) -> &mut Macro;
@@ -56,7 +58,6 @@ impl<'a> MutScope<'a> {
     delegate! {
         to self.global.scopes.get_mut(&self.id).unwrap() {
             pub fn new_var(&mut self, name: &str, map_input: bool, variadic: bool) -> VarID;
-            pub fn set_outputs(&mut self, outputs: Vec<String>);
             pub fn get_mut_var(&mut self, id: VarID) -> &mut Var;
         }
     }

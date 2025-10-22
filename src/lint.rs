@@ -24,6 +24,8 @@ pub fn lint_directory<P: AsRef<Path>>(path: P) {
         syntaxrules: ConfigSyntaxRules {
             style_commaleading: false,
             style_keyword_1space: false,
+            style_indent: false,
+            style_trailingwhitespace: false,
             module_identifier_matches_filename: false,
             module_ansi_forbidden: false,
             uppercamelcase_module: false,

@@ -30,7 +30,7 @@ impl Lut {
             .iter()
             .map(|name| scope.new_var(name, true, false))
             .collect::<Vec<_>>();
-        scope.set_outputs(vec![self.output_name.to_string()]);
+        scope.local().output_names = Some(vec![self.output_name.to_string()]);
 
         let paste_macro = Registry::paste_macro(scope.global, num_inputs + 1, true);
         let prefix = scope.get_alias(self.name, true);

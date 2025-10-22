@@ -7,7 +7,7 @@ use vlogpp::scope::global::GlobalScope;
 fn main() {
     lint_directory("circuits");
 
-    let netlist = Netlist::new("circuits/adder.sv", false, &[("WIDTH", "8", "adder")]);
+    let netlist = Netlist::new("circuits/submod.sv", false, &[]);
     let registry = Registry::new()
         .register_lut(Lut::not())
         .register_lut(Lut::or())
@@ -18,7 +18,7 @@ fn main() {
 
     let mut global_scope = GlobalScope::new(registry);
     Registry::top_modules(&mut global_scope);
-    global_scope.variadicify_macros(2);
+    // global_scope.variadicify_macros(2);
 
     println!("{global_scope}");
 }

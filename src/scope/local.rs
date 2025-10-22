@@ -119,10 +119,6 @@ impl LocalScope {
         unreachable!()
     }
 
-    pub fn set_outputs(&mut self, outputs: Vec<String>) {
-        self.output_names = Some(outputs);
-    }
-
     pub fn get_var(&self, id: VarID) -> &Var {
         self.vars.get(&id).unwrap()
     }

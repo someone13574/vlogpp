@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use crate::expr::{Expr, VarID};
 use crate::r#macro::{Macro, MacroID};
@@ -14,7 +14,7 @@ struct WireInfo {
 
     pub expr: Option<Expr>,
     pub downstream_expr: Option<Expr>,
-    pub bundled_expr: Option<(VarID, Expr, Vec<VarID>)>,
+    pub bundled_expr: Option<(VarID, Vec<VarID>)>,
 
     pub split_delta: Option<usize>,
     pub split_idx_lb: Option<usize>,
@@ -25,29 +25,31 @@ struct WireInfo {
 }
 
 impl WireInfo {
-    fn expr_for_lb_split(&self, split_idx_lb: usize) -> &Expr {
+    fn expr_for_lb_split(&self, split_idx_lb: usize) -> Expr {
         if self.split_idx_lb.unwrap() == split_idx_lb {
-            self.expr.as_ref().unwrap()
+            self.expr.clone().unwrap()
         } else if self.split_idx_lb.unwrap() + 1 == split_idx_lb && self.bundled_expr.is_some() {
-            &self.bundled_expr.as_ref().unwrap().1
+            Expr::Var(self.bundled_expr.as_ref().unwrap().0)
         } else {
             self.downstream_expr
                 .as_ref()
                 .or(self.expr.as_ref())
                 .unwrap()
+                .clone()
         }
     }
 
-    fn expr_for_ub_split(&self, split_idx_ub: usize) -> &Expr {
+    fn expr_for_ub_split(&self, split_idx_ub: usize) -> Expr {
         if self.split_idx_ub.unwrap() == split_idx_ub {
-            self.expr.as_ref().unwrap()
+            self.expr.clone().unwrap()
         } else if self.split_idx_ub.unwrap() + 1 == split_idx_ub && self.bundled_expr.is_some() {
-            &self.bundled_expr.as_ref().unwrap().1
+            Expr::Var(self.bundled_expr.as_ref().unwrap().0)
         } else {
             self.downstream_expr
                 .as_ref()
                 .or(self.expr.as_ref())
                 .unwrap()
+                .clone()
         }
     }
 
@@ -76,17 +78,11 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
     let mut wire_infos = consumer_counts(module);
     let mut var_wires = create_inputs(&mut wire_infos, module, &mut scope);
 
-    scope.set_outputs(
-        module
-            .output_ports()
-            .map(|(name, _)| name.to_string())
-            .collect(),
-    );
-
     for &cell_idx in &cell_topo {
-        let (_cell_name, cell) = module.cells.iter().nth(cell_idx).unwrap();
+        let (cell_name, cell) = module.cells.iter().nth(cell_idx).unwrap();
         let call_macro = Registry::module(scope.global, &cell.kind)
             .unwrap_or_else(|| panic!("Unknown cell type `{}`", &cell.kind));
+        let call_macro_scope = scope.get_macro(call_macro).scope_id;
 
         let mut input_wires = cell
             .input_connections()
@@ -133,25 +129,39 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
             args: input_exprs,
         };
 
-        let output_wires = cell
+        let mut output_wires = cell
             .output_connections()
-            .map(|(_, wire)| wire)
+            .map(|(name, wire)| {
+                (
+                    wire,
+                    scope
+                        .get_scope(call_macro_scope)
+                        .local()
+                        .output_names
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .position(|output_name| output_name == name)
+                        .unwrap(),
+                )
+            })
             .collect::<Vec<_>>();
+        output_wires.sort_by_key(|(_, idx)| *idx);
+
         let total_consumers: usize = output_wires
             .iter()
-            .map(|wire| wire_infos.get(wire).unwrap().consumers)
+            .map(|(wire, _)| wire_infos.get(wire).unwrap().consumers)
             .sum();
 
         if output_wires.len() > 1 {
-            let bundle_var =
-                scope.new_var(&format!("bundleof{}_", output_wires.len()), false, false);
+            let bundle_var = scope.new_var(cell_name, false, false);
             let expanded_vars = (0..output_wires.len())
                 .map(|_| scope.new_var("bt", false, false))
                 .collect::<Vec<_>>();
-            let bundle_expr = Some((bundle_var, Expr::Var(bundle_var), expanded_vars.clone()));
+            let bundle_expr = Some((bundle_var, expanded_vars.clone()));
 
-            for (&wire, &temp) in output_wires.iter().zip(expanded_vars.iter()) {
-                let wire_info = wire_infos.get_mut(&wire).unwrap();
+            for ((wire, _), &temp) in output_wires.iter().zip(expanded_vars.iter()) {
+                let wire_info = wire_infos.get_mut(wire).unwrap();
                 wire_info.expr = Some(expr.clone());
                 wire_info.split_idx_lb = Some(split_idx_lb);
                 wire_info.split_delta = Some(2);
@@ -161,10 +171,10 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
                 wire_info.downstream_expr = Some(Expr::Var(temp));
                 wire_info.bundled_expr = bundle_expr.clone();
 
-                var_wires.insert(temp, wire);
+                var_wires.insert(temp, *wire);
             }
         } else {
-            let wire = output_wires.first().unwrap();
+            let (wire, _) = output_wires.first().unwrap();
             let wire_info = wire_infos.get_mut(wire).unwrap();
             wire_info.expr = Some(expr.clone());
             wire_info.split_idx_lb = Some(split_idx_lb);
@@ -204,8 +214,15 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
         .map(|(_, port)| wire_infos.get(&port.wire).unwrap().input_var.unwrap())
         .collect();
 
-    for (_name, port) in module.output_ports() {
+    scope.local().output_names = Some(Vec::new());
+    for (name, port) in module.output_ports() {
         add_to_split(port.wire, max_split, &wire_infos, &var_wires, &mut splits);
+        scope
+            .local()
+            .output_names
+            .as_mut()
+            .unwrap()
+            .push(name.to_string());
     }
 
     let ids = splits
@@ -248,9 +265,9 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
         next_split = Some(macro_id);
     }
 
-    for &macro_id in ids.iter().rev() {
-        Macro::sort_passthrough_vars(macro_id, &mut scope);
-    }
+    // for &macro_id in ids.iter().rev() {
+    //     Macro::sort_passthrough_vars(macro_id, &mut scope);
+    // }
 
     *ids.first().unwrap()
 }
@@ -431,6 +448,17 @@ fn compute_split_upper_bounds(max_split: usize, wire_infos: &mut Map<Wire, WireI
 
     assert_eq!(topo.len(), wire_infos.len());
 
+    // Bundle to wires map
+    let mut bundle_groups = HashMap::new();
+    for (&wire, wire_info) in wire_infos.iter() {
+        if let Some((bundle_var, _)) = &wire_info.bundled_expr {
+            bundle_groups
+                .entry(*bundle_var)
+                .and_modify(|wires: &mut Vec<Wire>| wires.push(wire))
+                .or_insert(vec![wire]);
+        }
+    }
+
     // Compute upper bounds
     for wire_info in wire_infos.values_mut() {
         if wire_info.input_var.is_some() {
@@ -452,7 +480,23 @@ fn compute_split_upper_bounds(max_split: usize, wire_infos: &mut Map<Wire, WireI
                     .saturating_sub(delta);
 
                 if ub < wire_infos.get(wire).unwrap().split_idx_ub.unwrap() {
-                    wire_infos.get_mut(wire).unwrap().split_idx_ub = Some(ub);
+                    if let Some((bundle_var, _)) = wire_infos
+                        .get(wire)
+                        .and_then(|info| info.bundled_expr.as_ref())
+                    {
+                        for bundle_wire in bundle_groups.get(bundle_var).unwrap() {
+                            assert!(
+                                wire_infos
+                                    .get(bundle_wire)
+                                    .unwrap()
+                                    .split_idx_ub
+                                    .is_none_or(|old_ub| ub < old_ub)
+                            );
+                            wire_infos.get_mut(bundle_wire).unwrap().split_idx_ub = Some(ub);
+                        }
+                    } else {
+                        wire_infos.get_mut(wire).unwrap().split_idx_ub = Some(ub);
+                    }
                 }
             }
         }
@@ -495,12 +539,11 @@ fn add_to_split(
             // Propagation
             if var_info.split_idx_ub.unwrap() + 1 == split_idx && var_info.bundled_expr.is_some() {
                 // Add bundle var to expr
-                let (bundle_var, bundle_var_expr, expanded_vars) =
-                    var_info.bundled_expr.as_ref().unwrap();
+                let (bundle_var, expanded_vars) = var_info.bundled_expr.as_ref().unwrap();
                 if prev_input_idx.is_some_and(|prev_input_idx| {
                     prev_input_idx + 1 == split.output_count + expanded_vars.len()
                 }) {
-                    split.exprs.push(bundle_var_expr.clone());
+                    split.exprs.push(Expr::Var(*bundle_var));
                     split.output_count += expanded_vars.len();
                 }
 
@@ -510,6 +553,27 @@ fn add_to_split(
                 } else {
                     prev_input_idx = Some(split.vars.len());
                     split.vars.push(*bundle_var);
+                }
+            } else if let Some((_bundle_var, expanded_vars)) = var_info.bundled_expr.as_ref() {
+                // Add expanded vars to expr
+                if prev_input_idx.is_some_and(|prev_input_idx| {
+                    prev_input_idx + 1 == split.output_count + expanded_vars.len()
+                }) {
+                    split
+                        .exprs
+                        .extend(expanded_vars.iter().map(|var| Expr::Var(*var)));
+                    split.output_count += expanded_vars.len();
+                }
+
+                // Add expanded vars to input
+                if expanded_vars
+                    .iter()
+                    .any(|expanded| split.vars.contains(expanded))
+                {
+                    break;
+                } else {
+                    prev_input_idx = Some(split.vars.len() + expanded_vars.len() - 1);
+                    split.vars.extend(expanded_vars);
                 }
             } else {
                 // Add single var to expr
@@ -521,17 +585,7 @@ fn add_to_split(
                     split.output_count += 1;
                 }
 
-                if let Some((_bundle_var, _expr, expanded_vars)) = var_info.bundled_expr.as_ref() {
-                    if expanded_vars
-                        .iter()
-                        .any(|expanded| split.vars.contains(expanded))
-                    {
-                        break;
-                    } else {
-                        prev_input_idx = Some(split.vars.len() + expanded_vars.len() - 1);
-                        split.vars.extend(expanded_vars);
-                    }
-                } else if split.vars.contains(&var_id) {
+                if split.vars.contains(&var_id) {
                     break;
                 } else {
                     // Add single var to inputs
