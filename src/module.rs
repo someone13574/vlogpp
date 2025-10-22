@@ -217,6 +217,7 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
                 name: scope.get_alias(name, false),
                 expr: Expr::List(split.exprs, ", "),
                 inputs: split.vars,
+                variadicified_vars: None,
                 calling_split: None,
                 output_to_input: None,
                 doc_name: if idx == 0 {

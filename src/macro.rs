@@ -15,6 +15,7 @@ pub struct Macro {
     pub expr: Expr,
 
     pub inputs: Vec<VarID>,
+    pub variadicified_vars: Option<Vec<VarID>>,
     pub calling_split: Option<MacroID>,
     pub output_to_input: Option<usize>,
 
@@ -59,6 +60,54 @@ impl Macro {
         Ok(())
     }
 
+    pub fn variadicify_vars(&mut self, min_replace: usize) {
+        assert_ne!(min_replace, 0);
+
+        if self.variadicified_vars.is_some() {
+            return;
+        }
+
+        let mut longest_span = None;
+        for span in self.expr.var_spans() {
+            if span.len()
+                <= longest_span
+                    .as_ref()
+                    .map_or(min_replace - 1, |longest_span: &Vec<VarID>| {
+                        longest_span.len()
+                    })
+            {
+                continue;
+            }
+
+            if span.len() > self.inputs.len() {
+                continue;
+            }
+
+            if span
+                .iter()
+                .zip(self.inputs.iter().skip(self.inputs.len() - span.len()))
+                .any(|(a, b)| a != b)
+            {
+                continue;
+            }
+
+            if span.iter().any(|var| {
+                self.expr
+                    .vars()
+                    .iter()
+                    .filter(|expr_var| var == *expr_var)
+                    .count()
+                    != 1
+            }) {
+                continue;
+            }
+
+            longest_span = Some(span);
+        }
+
+        self.variadicified_vars = longest_span;
+    }
+
     pub fn sort_passthrough_vars(id: MacroID, scope: &mut MutScope) {
         let mut input_perm = scope
             .get_macro(id)
@@ -70,11 +119,15 @@ impl Macro {
                     idx,
                     scope
                         .get_macro(id)
-                        .var_passthrough_score(*input, &scope.scope()),
+                        .var_passthrough_score(*input, &scope.scope())
+                        .0,
                 )
             })
             .collect::<Vec<_>>();
-        input_perm.sort_by_key(|(_, score)| *score);
+        input_perm.sort_by(|(_, a), (_, b)| {
+            assert!(a.is_finite() && b.is_finite());
+            a.partial_cmp(b).unwrap()
+        });
 
         let inputs = &mut scope.get_mut_macro(id).inputs;
         *inputs = input_perm
@@ -100,7 +153,7 @@ impl Macro {
         }
     }
 
-    fn var_passthrough_score(&self, id: VarID, scope: &Scope) -> (usize, usize) {
+    fn var_passthrough_score(&self, id: VarID, scope: &Scope) -> (f64, f64) {
         let (caller_score, caller_max_score) = if let Some(caller) = self
             .calling_split
             .iter()
@@ -108,22 +161,22 @@ impl Macro {
         {
             scope.get_macro(*caller).var_passthrough_score(id, scope)
         } else {
-            (0, 1)
+            (0.0, 1.0)
         };
 
-        let max_expr_score = self.expr.vars().len();
+        let max_expr_score = self.expr.vars().len() as f64;
         let expr_score = self
             .expr
             .vars()
             .iter()
             .position(|var| *var == id)
-            .unwrap_or_default();
+            .unwrap_or_default() as f64;
         let indiv_score = if self.is_passthrough_var(id) {
             max_expr_score + expr_score
         } else {
-            0
+            0.0
         };
-        let max_indiv_score = max_expr_score * 2;
+        let max_indiv_score = max_expr_score * 2.0;
 
         (
             caller_score + indiv_score * caller_max_score,
@@ -180,17 +233,46 @@ impl Macro {
             String::new()
         };
 
+        let (inputs, expr_text) = if let Some(variadicified_vars) = &self.variadicified_vars {
+            let inputs = self
+                .inputs
+                .iter()
+                .take(self.inputs.len() - variadicified_vars.len())
+                .map(|var| scope.get_var(*var).input_text())
+                .chain(std::iter::once("..."))
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let span = variadicified_vars
+                .iter()
+                .map(|var| scope.get_var(*var).expr_text())
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            (
+                inputs,
+                self.expr
+                    .emit(scope)
+                    .replace(&span, "__VA_ARGS__".magenta().to_string().as_str()),
+            )
+        } else {
+            (
+                self.inputs
+                    .iter()
+                    .map(|input| scope.get_var(*input).input_text())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                self.expr.emit(scope),
+            )
+        };
+
         format!(
             "{}{} {}({}) {}",
             docs.dimmed(),
             "#define".yellow(),
             self.name.magenta(),
-            self.inputs
-                .iter()
-                .map(|input| { scope.get_var(*input).input_text() })
-                .collect::<Vec<_>>()
-                .join(", "),
-            self.expr.emit(scope)
+            inputs,
+            expr_text
         )
     }
 }

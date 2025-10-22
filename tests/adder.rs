@@ -24,6 +24,7 @@ fn test_adder() {
 
     let mut global_scope = GlobalScope::new(registry);
     let adder = *Registry::top_modules(&mut global_scope).first().unwrap();
+    global_scope.variadicify_macros(2);
     let macro_text = global_scope.emit();
 
     let adder_macro = global_scope.get_macro(adder);

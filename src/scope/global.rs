@@ -157,6 +157,12 @@ impl GlobalScope {
         strip_ansi_escapes::strip_str(format!("{self}"))
     }
 
+    pub fn variadicify_macros(&mut self, min_replace: usize) {
+        for r#macro in self.macros.values_mut() {
+            r#macro.variadicify_vars(min_replace);
+        }
+    }
+
     fn name_available(&self, name: &str, prefix: bool) -> bool {
         !self
             .macros

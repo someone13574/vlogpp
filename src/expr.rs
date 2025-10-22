@@ -56,6 +56,34 @@ impl Expr {
         }
     }
 
+    pub fn var_spans(&self) -> Vec<Vec<VarID>> {
+        match self {
+            Expr::Var(var_id) => vec![vec![*var_id]],
+            Expr::Macro(_) | Expr::Text(_) | Expr::List(_, "##") => Vec::new(),
+            Expr::List(exprs, _)
+            | Expr::Call {
+                r#macro: _,
+                args: exprs,
+            } => {
+                let mut spans = Vec::new();
+                for start in 0..exprs.len() {
+                    let mut curr_span = Vec::new();
+                    for end_inc in start..exprs.len() {
+                        if let Expr::Var(var_id) = exprs.get(end_inc).unwrap() {
+                            curr_span.push(*var_id);
+                            spans.push(curr_span.clone());
+                        } else {
+                            spans.extend(exprs.get(end_inc).unwrap().var_spans());
+                            break;
+                        }
+                    }
+                }
+
+                spans
+            }
+        }
+    }
+
     pub fn emit(&self, scope: Scope) -> String {
         match self {
             Expr::Var(var_id) => scope.get_var(*var_id).expr_text().to_string(),

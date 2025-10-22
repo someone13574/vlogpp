@@ -18,6 +18,7 @@ fn main() {
 
     let mut global_scope = GlobalScope::new(registry);
     Registry::top_modules(&mut global_scope);
+    global_scope.variadicify_macros(2);
 
     println!("{global_scope}");
 }
