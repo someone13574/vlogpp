@@ -1,4 +1,5 @@
 use colored::Colorize;
+use strip_ansi_escapes::strip_str;
 
 use crate::expr::{Expr, VarID};
 use crate::scope::global::GlobalScope;
@@ -233,8 +234,16 @@ impl Macro {
             String::new()
         };
 
-        let (inputs, expr_text) = if let Some(variadicified_vars) = &self.variadicified_vars {
-            let inputs = self
+        let mut inputs = self
+            .inputs
+            .iter()
+            .map(|input| scope.get_var(*input).input_text())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut expr_text = self.expr.emit(scope);
+
+        if let Some(variadicified_vars) = &self.variadicified_vars {
+            let variadic_inputs = self
                 .inputs
                 .iter()
                 .take(self.inputs.len() - variadicified_vars.len())
@@ -248,23 +257,17 @@ impl Macro {
                 .map(|var| scope.get_var(*var).expr_text())
                 .collect::<Vec<_>>()
                 .join(", ");
+            let variadic_expr_text =
+                expr_text.replace(&span, "__VA_ARGS__".magenta().to_string().as_str());
 
-            (
-                inputs,
-                self.expr
-                    .emit(scope)
-                    .replace(&span, "__VA_ARGS__".magenta().to_string().as_str()),
-            )
-        } else {
-            (
-                self.inputs
-                    .iter()
-                    .map(|input| scope.get_var(*input).input_text())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                self.expr.emit(scope),
-            )
-        };
+            if cfg!(not(feature = "obfuscate"))
+                || strip_str(&variadic_inputs).len() + strip_str(&variadic_expr_text).len()
+                    < strip_str(&inputs).len() + strip_str(&expr_text).len()
+            {
+                inputs = variadic_inputs;
+                expr_text = variadic_expr_text;
+            }
+        }
 
         format!(
             "{}{} {}({}) {}",
