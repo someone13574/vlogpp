@@ -129,6 +129,7 @@ impl Registry {
                     args: var_exprs,
                 },
                 inputs: vars,
+                calling_split: None,
                 output_to_input: None,
                 doc_name: None,
             })
@@ -139,6 +140,7 @@ impl Registry {
                 name,
                 expr: Expr::List(var_exprs, "##"),
                 inputs: vars,
+                calling_split: None,
                 output_to_input: None,
                 doc_name: None,
             })
@@ -164,6 +166,7 @@ impl Registry {
                 name: scope.get_alias("EVAL0", false),
                 expr: Expr::Var(variadic),
                 inputs: vec![variadic],
+                calling_split: None,
                 output_to_input: None,
                 doc_name: None,
             })
@@ -191,6 +194,7 @@ impl Registry {
                     }],
                 },
                 inputs: vec![variadic],
+                calling_split: None,
                 output_to_input: None,
                 doc_name: None,
             })
@@ -213,6 +217,7 @@ impl Registry {
             name: scope.get_alias("EMPTY", false),
             expr: Expr::List(Vec::new(), ", "),
             inputs: vec![variadic],
+            calling_split: None,
             output_to_input: None,
             doc_name: None,
         });
@@ -245,6 +250,7 @@ impl Registry {
                 " ",
             ),
             inputs: vec![var],
+            calling_split: None,
             output_to_input: None,
             doc_name: None,
         });
@@ -267,6 +273,7 @@ impl Registry {
                 " ",
             ),
             inputs: vec![variadic],
+            calling_split: None,
             output_to_input: None,
             doc_name: None,
         });
@@ -305,6 +312,7 @@ impl Registry {
                 args: vec![Expr::Text(format!("{prefix}{PREFIX_SEP}")), Expr::Var(var)],
             },
             inputs: vec![var],
+            calling_split: None,
             output_to_input: None,
             doc_name: None,
         });

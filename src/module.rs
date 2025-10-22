@@ -217,6 +217,7 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
                 name: scope.get_alias(name, false),
                 expr: Expr::List(split.exprs, ", "),
                 inputs: split.vars,
+                calling_split: None,
                 output_to_input: None,
                 doc_name: if idx == 0 {
                     Some(name.to_string())
@@ -239,9 +240,15 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
                 r#macro: Box::new(Expr::Macro(next_split)),
                 args: inner,
             };
+
+            scope.get_mut_macro(next_split).calling_split = Some(macro_id);
         }
 
         next_split = Some(macro_id);
+    }
+
+    for &macro_id in ids.iter().rev() {
+        Macro::sort_passthrough_vars(macro_id, &mut scope);
     }
 
     *ids.first().unwrap()

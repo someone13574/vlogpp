@@ -126,6 +126,10 @@ impl LocalScope {
     pub fn get_var(&self, id: VarID) -> &Var {
         self.vars.get(&id).unwrap()
     }
+
+    pub fn get_mut_var(&mut self, id: VarID) -> &mut Var {
+        self.vars.get_mut(&id).unwrap()
+    }
 }
 
 #[cfg(not(feature = "obfuscate"))]

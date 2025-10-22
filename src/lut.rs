@@ -56,6 +56,7 @@ impl Lut {
                     .collect(),
             },
             inputs: vars,
+            calling_split: None,
             output_to_input: self.output_to_input,
             doc_name: Some(self.name.to_string()),
         })

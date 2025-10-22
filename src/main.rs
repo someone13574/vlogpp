@@ -7,8 +7,7 @@ use vlogpp::scope::global::GlobalScope;
 fn main() {
     lint_directory("circuits");
 
-    let netlist = Netlist::new("circuits/adder.sv", true, &[("WIDTH", "8", "adder")]);
-
+    let netlist = Netlist::new("circuits/adder.sv", false, &[("WIDTH", "8", "adder")]);
     let registry = Registry::new()
         .register_lut(Lut::not())
         .register_lut(Lut::or())
