@@ -129,7 +129,7 @@ impl Macro {
                 if caller_vars
                     .as_ref()
                     .is_some_and(|caller_vars| caller_vars.contains(&bundle_var))
-                    && bundle_blocks.get(&bundle_var).is_none()
+                    && !bundle_blocks.contains_key(&bundle_var)
                 {
                     bundle_blocks.insert(bundle_var, block_idx);
                     input_blocks_perm.push((block_idx, total_idx, Vec::new(), 0.0));

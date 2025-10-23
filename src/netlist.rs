@@ -17,12 +17,6 @@ pub struct Netlist {
 
 impl Netlist {
     pub fn new<P: AsRef<Path>>(file: P, display: bool, top_params: &[(&str, &str, &str)]) -> Self {
-        let display_command = if display {
-            "show -stretch -format ps -viewer evince;"
-        } else {
-            ""
-        };
-
         let params = top_params
             .iter()
             .map(|(k, v, module)| format!("chparam -set {k} {v} {module};"))
@@ -37,8 +31,7 @@ impl Netlist {
             techmap;; opt -full;;
             splitnets -ports;; expose -dff -cut;; opt -full;;
             clean -purge;
-            {}
-            write_json design.json", file.as_ref().display(), display_command};
+            write_json design.json", file.as_ref().display()};
 
         let status = Command::new("yosys")
             .arg("-p")
@@ -48,14 +41,13 @@ impl Netlist {
         assert!(status.success());
 
         let buffer = BufReader::new(File::open("design.json").unwrap());
-        let mut x: Netlist = serde_json::from_reader(buffer).unwrap();
-        x.postprocess();
+        let mut netlist: Netlist = serde_json::from_reader(buffer).unwrap();
+        netlist.postprocess();
 
-        let mut f = File::create("processed.json").unwrap();
-        f.write_all(&serde_json::to_vec_pretty(&x).unwrap())
-            .unwrap();
-
-        x
+        if display {
+            netlist.clone().show();
+        }
+        netlist
     }
 
     pub fn postprocess(&mut self) {
@@ -100,7 +92,7 @@ impl Netlist {
             for (cell_name, cell) in module.cells {
                 if cell.kind == "$_DFF_P_" {
                     let out_wire = cell.connections.get("Q").unwrap();
-                    let input_name = format!("{}.i", outputs.get(&out_wire).unwrap());
+                    let input_name = format!("{}.i", outputs.get(out_wire).unwrap());
                     let input_wire = *inputs.get(&input_name).unwrap();
 
                     let cell = self
@@ -166,18 +158,144 @@ impl Netlist {
 
                         dirty = true;
                     }
-                }
-            }
 
-            if dirty {
-                if let Some(callers) = callers.get(&module_name) {
-                    for caller in callers {
-                        queue
-                            .push_back((caller.clone(), self.modules.get(caller).unwrap().clone()));
+                    let cell = self
+                        .modules
+                        .get(&module_name)
+                        .unwrap()
+                        .cells
+                        .get(&cell_name)
+                        .unwrap()
+                        .clone();
+                    for (port_name, port) in &instance.ports {
+                        if cell.connections.contains_key(port_name) {
+                            assert_eq!(
+                                *cell.port_directions.get(port_name).unwrap(),
+                                port.direction
+                            );
+
+                            if port.direction == PortDirection::Input {
+                                continue;
+                            }
+
+                            let output_wire = cell.connections.get(port_name).unwrap();
+                            if let Some(input_wire) =
+                                cell.connections.get(&format!("{port_name}.i"))
+                            {
+                                assert_eq!(
+                                    *cell.port_directions.get(&format!("{port_name}.i")).unwrap(),
+                                    PortDirection::Input
+                                );
+
+                                let module = self.modules.get_mut(&module_name).unwrap();
+                                for cell in module.cells.values_mut() {
+                                    for (connection_name, connection_wire) in
+                                        cell.connections.clone()
+                                    {
+                                        if connection_wire != *output_wire {
+                                            continue;
+                                        }
+
+                                        if *cell.port_directions.get(&connection_name).unwrap()
+                                            != PortDirection::Input
+                                        {
+                                            continue;
+                                        }
+
+                                        *cell.connections.get_mut(&connection_name).unwrap() =
+                                            *input_wire;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
+
+            if dirty && let Some(callers) = callers.get(&module_name) {
+                for caller in callers {
+                    queue.push_back((caller.clone(), self.modules.get(caller).unwrap().clone()));
+                }
+            }
         }
+    }
+
+    pub fn show(mut self) {
+        self.modules.insert(
+            "_DFF_P_".to_string(),
+            Module {
+                attributes: HashMap::new(),
+                ports: [
+                    (
+                        "Q.i".to_string(),
+                        Port {
+                            direction: PortDirection::Input,
+                            wire: Wire(0),
+                        },
+                    ),
+                    (
+                        "D".to_string(),
+                        Port {
+                            direction: PortDirection::Input,
+                            wire: Wire(1),
+                        },
+                    ),
+                    (
+                        "C".to_string(),
+                        Port {
+                            direction: PortDirection::Input,
+                            wire: Wire(2),
+                        },
+                    ),
+                    (
+                        "Q".to_string(),
+                        Port {
+                            direction: PortDirection::Output,
+                            wire: Wire(3),
+                        },
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+                cells: [(
+                    "mux".to_string(),
+                    Cell {
+                        kind: "$_MUX_".to_string(),
+                        port_directions: [
+                            ("A".to_string(), PortDirection::Input),
+                            ("B".to_string(), PortDirection::Input),
+                            ("S".to_string(), PortDirection::Input),
+                            ("Y".to_string(), PortDirection::Output),
+                        ]
+                        .into_iter()
+                        .collect(),
+                        connections: [
+                            ("A".to_string(), Wire(0)),
+                            ("B".to_string(), Wire(1)),
+                            ("S".to_string(), Wire(2)),
+                            ("Y".to_string(), Wire(3)),
+                        ]
+                        .into_iter()
+                        .collect(),
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            },
+        );
+
+        let mut file = File::create("processed.json").unwrap();
+        let text = serde_json::to_string_pretty(&self)
+            .unwrap()
+            .replace("$_DFF_P_", "_DFF_P_");
+        file.write_all(text.as_bytes()).unwrap();
+
+        let status = Command::new("yosys")
+            .arg("-p")
+            .arg("read_json processed.json; show -stretch -format ps -viewer evince;")
+            .status()
+            .unwrap();
+        assert!(status.success());
     }
 }
 
@@ -202,8 +320,17 @@ impl Module {
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct Wire(pub usize);
+
+impl Serialize for Wire {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.collect_seq(std::iter::once(self.0))
+    }
+}
 
 impl<'de> Deserialize<'de> for Wire {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
