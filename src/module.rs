@@ -4,8 +4,8 @@ use crate::expr::{Expr, VarID};
 use crate::r#macro::{Macro, MacroID};
 use crate::netlist::{Cell, Module, Wire};
 use crate::registry::Registry;
+use crate::scope::MutScope;
 use crate::scope::global::GlobalScope;
-use crate::scope::{MutScope, Scope};
 use crate::{Map, Set};
 
 #[derive(Debug, Clone)]
@@ -96,7 +96,6 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
                 )
             })
             .collect::<Vec<_>>();
-        add_reg_macro_prev_output(&mut input_wires, cell, call_macro, scope.scope(), module);
 
         input_wires.sort_by_key(|(_, idx)| *idx);
         scope
@@ -236,7 +235,6 @@ pub fn create_module(name: &str, module: &Module, global_scope: &mut GlobalScope
                 inputs: split.vars,
                 variadicified_vars: None,
                 calling_split: None,
-                output_to_input: None,
                 doc_name: if idx == 0 {
                     Some(name.to_string())
                 } else {
@@ -373,28 +371,6 @@ fn create_inputs(
     }
 
     var_wires
-}
-
-fn add_reg_macro_prev_output(
-    inputs: &mut Vec<(Wire, usize)>,
-    cell: &Cell,
-    macro_id: MacroID,
-    scope: Scope,
-    module: &Module,
-) {
-    if let Some(map_output_to_input_idx) = scope.get_macro(macro_id).output_to_input {
-        assert_eq!(cell.output_connections().count(), 1);
-
-        let (_, output_wire) = cell.output_connections().next().unwrap();
-        let (output_name, _) = module
-            .output_ports()
-            .find(|(_, port)| output_wire == port.wire)
-            .unwrap();
-        let input_name = format!("{output_name}.i");
-        let input_wire = module.ports.get(&input_name).unwrap().wire;
-
-        inputs.push((input_wire, map_output_to_input_idx));
-    }
 }
 
 fn compute_split_upper_bounds(max_split: usize, wire_infos: &mut Map<Wire, WireInfo>) {

@@ -14,7 +14,6 @@ pub struct Lut {
     pub output_name: &'static str,
 
     pub outputs: &'static [bool],
-    pub output_to_input: Option<usize>,
 }
 
 impl Lut {
@@ -58,7 +57,6 @@ impl Lut {
             inputs: vars,
             variadicified_vars: None,
             calling_split: None,
-            output_to_input: self.output_to_input,
             doc_name: Some(self.name.to_string()),
         })
     }
@@ -69,7 +67,6 @@ impl Lut {
             input_names: &["A"],
             output_name: "Y",
             outputs: &[true, false],
-            output_to_input: None,
         }
     }
 
@@ -79,7 +76,6 @@ impl Lut {
             input_names: &["A", "B"],
             output_name: "Y",
             outputs: &[false, true, true, true],
-            output_to_input: None,
         }
     }
 
@@ -89,7 +85,6 @@ impl Lut {
             input_names: &["A", "B"],
             output_name: "Y",
             outputs: &[false, false, false, true],
-            output_to_input: None,
         }
     }
 
@@ -99,17 +94,15 @@ impl Lut {
             input_names: &["A", "B"],
             output_name: "Y",
             outputs: &[false, true, true, false],
-            output_to_input: None,
         }
     }
 
     pub fn dff_p() -> Self {
         Self {
             name: "$_DFF_P_",
-            input_names: &["C", "D", "pQ"],
+            input_names: &["C", "D", "Q.i"],
             output_name: "Q",
             outputs: &[false, true, false, true, false, false, true, true],
-            output_to_input: Some(2),
         }
     }
 }

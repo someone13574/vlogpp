@@ -20,7 +20,6 @@ pub struct Macro {
     pub inputs: Vec<VarID>,
     pub variadicified_vars: Option<Vec<VarID>>,
     pub calling_split: Option<MacroID>,
-    pub output_to_input: Option<usize>,
 
     pub doc_name: Option<String>,
 }

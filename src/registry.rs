@@ -131,7 +131,6 @@ impl Registry {
                 inputs: vars,
                 variadicified_vars: None,
                 calling_split: None,
-                output_to_input: None,
                 doc_name: None,
             })
         } else {
@@ -143,7 +142,6 @@ impl Registry {
                 inputs: vars,
                 variadicified_vars: None,
                 calling_split: None,
-                output_to_input: None,
                 doc_name: None,
             })
         };
@@ -170,7 +168,6 @@ impl Registry {
                 inputs: vec![variadic],
                 variadicified_vars: None,
                 calling_split: None,
-                output_to_input: None,
                 doc_name: None,
             })
         } else {
@@ -199,7 +196,6 @@ impl Registry {
                 inputs: vec![variadic],
                 variadicified_vars: None,
                 calling_split: None,
-                output_to_input: None,
                 doc_name: None,
             })
         };
@@ -223,7 +219,6 @@ impl Registry {
             inputs: vec![variadic],
             variadicified_vars: None,
             calling_split: None,
-            output_to_input: None,
             doc_name: None,
         });
 
@@ -257,7 +252,6 @@ impl Registry {
             inputs: vec![var],
             variadicified_vars: None,
             calling_split: None,
-            output_to_input: None,
             doc_name: None,
         });
 
@@ -281,7 +275,6 @@ impl Registry {
             inputs: vec![variadic],
             variadicified_vars: None,
             calling_split: None,
-            output_to_input: None,
             doc_name: None,
         });
 
@@ -321,7 +314,6 @@ impl Registry {
             inputs: vec![var],
             variadicified_vars: None,
             calling_split: None,
-            output_to_input: None,
             doc_name: None,
         });
 

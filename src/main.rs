@@ -7,7 +7,7 @@ use vlogpp::scope::global::GlobalScope;
 fn main() {
     lint_directory("circuits");
 
-    let netlist = Netlist::new("circuits/submod.sv", false, &[]);
+    let netlist = Netlist::new("circuits/stateful.sv", true, &[]);
     let registry = Registry::new()
         .register_lut(Lut::not())
         .register_lut(Lut::or())
