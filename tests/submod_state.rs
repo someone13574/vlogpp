@@ -9,10 +9,10 @@ use vlogpp::registry::Registry;
 use vlogpp::scope::global::GlobalScope;
 
 #[test]
-fn test_submods() {
+fn test_submod_state() {
     lint_directory("tests");
 
-    let netlist = Netlist::new("tests/submod.sv", false, &[]);
+    let netlist = Netlist::new("tests/submod_state.sv", false, &[]);
     let registry = Registry::default().add_netlist(netlist);
 
     let mut global_scope = GlobalScope::new(registry);
@@ -22,29 +22,24 @@ fn test_submods() {
     let macro_text = global_scope.emit();
     let top_macro = global_scope.get_macro(top);
 
-    for (a, b, c) in [(106_usize, 22, 1), (211, 165, 0)] {
-        let a_bits = format!("{:08b}", a)
+    for (sub_in, main_in) in [(4_usize, 79_usize), (12, 123)] {
+        let sub_in_bits = format!("{:04b}", sub_in)
             .chars()
             .rev()
             .enumerate()
-            .map(|(idx, c)| (format!("a[{idx}]"), c))
+            .map(|(idx, c)| (format!("sub..sub_cnt[{idx}].i"), c))
             .collect::<Vec<_>>();
-        let b_bits = format!("{:08b}", b)
+        let main_in_bits = format!("{:08b}", main_in)
             .chars()
             .rev()
             .enumerate()
-            .map(|(idx, c)| (format!("b[{idx}]"), c))
+            .map(|(idx, c)| (format!("cnt[{idx}].i"), c))
             .collect::<Vec<_>>();
-        let c_bit = if c == 1 {
-            ("c".to_string(), '1')
-        } else {
-            ("c".to_string(), '0')
-        };
 
-        let mut inputs = a_bits
+        let mut inputs = sub_in_bits
             .iter()
-            .chain(b_bits.iter())
-            .chain(once(&c_bit))
+            .chain(main_in_bits.iter())
+            .chain(once(&("clk".to_string(), '1')))
             .map(|(name, value)| {
                 (
                     top_macro.input_position(name, &global_scope).unwrap(),
@@ -60,20 +55,26 @@ fn test_submods() {
             .output_names
             .clone()
             .unwrap();
-        let mut output_bits = format!("{:09b}", a + b + c)
+        let mut output_bits = format!("{:08b}", (sub_in + main_in) % 256)
             .chars()
             .rev()
             .enumerate()
-            .map(|(idx, char)| {
+            .map(|(idx, char)| (format!("cnt[{idx}]"), char))
+            .chain(
+                format!("{:04b}", (sub_in + 1) % 16)
+                    .chars()
+                    .rev()
+                    .enumerate()
+                    .map(|(idx, char)| (format!("sub..sub_cnt[{idx}]"), char)),
+            )
+            .map(|(name, char)| {
                 (
-                    output_map
-                        .iter()
-                        .position(|out| out == &format!("out[{idx}]"))
-                        .unwrap(),
+                    output_map.iter().position(|out| out == &name).unwrap(),
                     char,
                 )
             })
             .collect::<Vec<_>>();
+
         output_bits.sort_by_key(|(idx, _)| *idx);
 
         let text = format!(

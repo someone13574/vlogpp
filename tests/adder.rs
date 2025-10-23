@@ -4,7 +4,6 @@ use std::iter::once;
 use std::process::Command;
 
 use vlogpp::lint::lint_directory;
-use vlogpp::lut::Lut;
 use vlogpp::netlist::Netlist;
 use vlogpp::registry::Registry;
 use vlogpp::scope::global::GlobalScope;
@@ -14,13 +13,7 @@ fn test_adder() {
     lint_directory("tests");
 
     let netlist = Netlist::new("tests/adder.sv", false, &[]);
-    let registry = Registry::new()
-        .register_lut(Lut::not())
-        .register_lut(Lut::or())
-        .register_lut(Lut::and())
-        .register_lut(Lut::xor())
-        .register_lut(Lut::dff_p())
-        .add_netlist(netlist);
+    let registry = Registry::default().add_netlist(netlist);
 
     let mut global_scope = GlobalScope::new(registry);
     let adder = *Registry::top_modules(&mut global_scope).first().unwrap();

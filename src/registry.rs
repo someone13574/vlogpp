@@ -333,5 +333,10 @@ impl Registry {
 impl Default for Registry {
     fn default() -> Self {
         Self::new()
+            .register_lut(Lut::not())
+            .register_lut(Lut::or())
+            .register_lut(Lut::and())
+            .register_lut(Lut::xor())
+            .register_lut(Lut::dff_p())
     }
 }
