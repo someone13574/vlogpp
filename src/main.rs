@@ -6,12 +6,13 @@ use vlogpp::scope::global::GlobalScope;
 fn main() {
     lint_directory("circuits");
 
-    let netlist = Netlist::new("circuits/stateful.sv", false, &[]);
+    let netlist = Netlist::new("circuits/counter.sv", true, &[]);
     let registry = Registry::default().add_netlist(netlist);
 
     let mut global_scope = GlobalScope::new(registry);
-    Registry::top_modules(&mut global_scope);
-    global_scope.variadicify_macros(2);
+    let top = Registry::module(&mut global_scope, "counter").unwrap();
 
+    Registry::repeat_macro(&mut global_scope, top, "cont");
+    Registry::eval_multiplier(&mut global_scope, 5);
     println!("{global_scope}");
 }

@@ -96,13 +96,4 @@ impl Lut {
             outputs: &[false, true, true, false],
         }
     }
-
-    pub fn dff_p() -> Self {
-        Self {
-            name: "$_DFF_P_",
-            input_names: &["C", "D", "Q.i"],
-            output_name: "Q",
-            outputs: &[false, true, false, true, false, false, true, true],
-        }
-    }
 }

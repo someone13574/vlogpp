@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::{BufReader, Write};
 use std::path::Path;
@@ -42,15 +42,15 @@ impl Netlist {
 
         let buffer = BufReader::new(File::open("design.json").unwrap());
         let mut netlist: Netlist = serde_json::from_reader(buffer).unwrap();
-        netlist.postprocess();
+        netlist.remove_flip_flops();
 
         if display {
-            netlist.clone().show();
+            netlist.show();
         }
         netlist
     }
 
-    pub fn postprocess(&mut self) {
+    fn remove_flip_flops(&mut self) {
         let mut callers = HashMap::new();
         for (module_name, module) in self.modules.iter() {
             for cell in module.cells.values() {
@@ -65,230 +65,210 @@ impl Netlist {
             }
         }
 
-        let mut queue = self.modules.clone().into_iter().collect::<VecDeque<_>>();
-        while let Some((module_name, module)) = queue.pop_front() {
-            let inputs = module
-                .input_ports()
-                .map(|(name, port)| (name.clone(), port.wire))
-                .collect::<HashMap<_, _>>();
-            let outputs = module
-                .output_ports()
-                .map(|(name, port)| (port.wire, name.clone()))
-                .collect::<HashMap<_, _>>();
+        let mut queue = self.modules.keys().cloned().collect::<VecDeque<_>>();
+        let mut removed_ports = HashMap::new();
 
+        while let Some(module_name) = queue.pop_back() {
             let mut next_wire = Wire(0);
-            for wire in module
+            for wire in self
+                .modules
+                .get(&module_name)
+                .unwrap()
                 .cells
                 .values()
                 .flat_map(|cell| cell.connections.values())
-                .chain(module.ports.values().map(|port| &port.wire))
+                .chain(
+                    self.modules
+                        .get(&module_name)
+                        .unwrap()
+                        .ports
+                        .values()
+                        .map(|port| &port.wire),
+                )
             {
                 if wire.0 >= next_wire.0 {
                     next_wire.0 = wire.0 + 1;
                 }
             }
 
-            let mut dirty = false;
-            for (cell_name, cell) in module.cells {
-                if cell.kind == "$_DFF_P_" {
-                    let out_wire = cell.connections.get("Q").unwrap();
-                    let input_name = format!("{}.i", outputs.get(out_wire).unwrap());
-                    let input_wire = *inputs.get(&input_name).unwrap();
+            let mut interface_modified = false;
+            for (cell_name, cell_clone) in self.modules.get(&module_name).unwrap().cells.clone() {
+                if cell_clone.kind == "$_DFF_P_" {
+                    // Remove flip-flops by using the D port directly
+                    let module = self.modules.get_mut(&module_name).unwrap();
+                    let data_wire = *cell_clone.connections.get("D").unwrap();
+                    let output_wire = *cell_clone.connections.get("Q").unwrap();
 
-                    let cell = self
-                        .modules
-                        .get_mut(&module_name)
-                        .unwrap()
-                        .cells
-                        .get_mut(&cell_name)
-                        .unwrap();
-                    cell.port_directions
-                        .insert("Q.i".to_string(), PortDirection::Input);
-                    cell.connections.insert("Q.i".to_string(), input_wire);
-                } else if let Some(instance) = self.modules.get(&cell.kind).cloned() {
-                    for (port_name, port) in &instance.ports {
-                        let new_port_name = format!("{}..{}", cell_name, port_name);
-
-                        if cell.connections.contains_key(port_name) {
-                            assert_eq!(
-                                *cell.port_directions.get(port_name).unwrap(),
-                                port.direction
+                    for cell in module.cells.values() {
+                        for (connection_name, connection) in cell.connections.iter() {
+                            // Flip-flops shouldn't connect to anything other than ports
+                            let port_direction = cell.port_dirs.get(connection_name).unwrap();
+                            assert!(
+                                *connection != output_wire || *port_direction != PortDir::Input
                             );
+                        }
+                    }
 
-                            if port.direction == PortDirection::Output
-                                && instance.ports.contains_key(&format!("{port_name}.i"))
-                                && !module.ports.contains_key(&new_port_name)
+                    for port in module.ports.values_mut() {
+                        if port.wire == output_wire && port.dir == PortDir::Output {
+                            port.wire = data_wire;
+                        }
+                    }
+
+                    module.cells.remove(&cell_name).unwrap();
+                } else if let Some(submod_clone) = self.modules.get(&cell_clone.kind).cloned() {
+                    let module = self.modules.get_mut(&module_name).unwrap();
+                    let cell = module.cells.get_mut(&cell_name).unwrap();
+
+                    // Remove removed ports
+                    if let Some(removed_ports) = removed_ports.get(&cell_clone.kind) {
+                        for removed_port in removed_ports {
+                            cell.port_dirs.remove(removed_port).unwrap();
+                            cell.connections.remove(removed_port).unwrap();
+                        }
+                    }
+
+                    // Add missing ports
+                    for (submod_port_name, submod_port) in &submod_clone.ports {
+                        if let Some((_, cell_port)) = cell
+                            .output_connections()
+                            .find(|(name, _)| *name == submod_port_name)
+                        {
+                            // Port exists on cell, but doesn't output to the module
+                            if submod_port.dir == PortDir::Output
+                                && submod_clone
+                                    .ports
+                                    .contains_key(&format!("{submod_port_name}.i"))
                             {
-                                let wire = cell.connections.get(port_name).unwrap();
-                                let module = self.modules.get_mut(&module_name).unwrap();
-                                module.ports.insert(
-                                    new_port_name,
-                                    Port {
-                                        direction: PortDirection::Output,
-                                        wire: *wire,
-                                    },
-                                );
+                                let inserted = module
+                                    .ports
+                                    .insert(
+                                        format!("{cell_name}..{submod_port_name}"),
+                                        Port {
+                                            dir: submod_port.dir,
+                                            wire: cell_port,
+                                        },
+                                    )
+                                    .is_none();
 
-                                let cell = module.cells.get_mut(&cell_name).unwrap();
-                                cell.port_directions
-                                    .insert(port_name.clone(), PortDirection::Output);
-                                cell.connections.insert(port_name.clone(), *wire);
-
-                                dirty = true;
+                                interface_modified = interface_modified || inserted;
                             }
+                        } else if !cell.connections.contains_key(submod_port_name) {
+                            // Port doesn't exist for the module or the cell
+                            let new_wire = next_wire;
+                            next_wire.0 += 1;
+
+                            assert!(
+                                cell.connections
+                                    .insert(submod_port_name.clone(), new_wire)
+                                    .is_none()
+                            );
+                            assert!(
+                                cell.port_dirs
+                                    .insert(submod_port_name.clone(), submod_port.dir)
+                                    .is_none()
+                            );
+                            assert!(
+                                module
+                                    .ports
+                                    .insert(
+                                        format!("{cell_name}..{submod_port_name}"),
+                                        Port {
+                                            dir: submod_port.dir,
+                                            wire: new_wire
+                                        }
+                                    )
+                                    .is_none()
+                            );
+                            interface_modified = true;
+                        }
+                    }
+
+                    // Reconnect cells using stateful module output to use the matching input
+                    let cell_clone = module.cells.get(&cell_name).unwrap().clone();
+                    for (port_name, port_dir) in cell_clone.port_dirs.clone() {
+                        if port_dir != PortDir::Output {
                             continue;
                         }
 
-                        let new_wire = next_wire;
-                        next_wire.0 += 1;
+                        let Some(cell_out_wire) = cell_clone.connections.get(&port_name).copied()
+                        else {
+                            continue;
+                        };
 
-                        let module = self.modules.get_mut(&module_name).unwrap();
-                        module.ports.insert(
-                            new_port_name,
-                            Port {
-                                direction: port.direction,
-                                wire: new_wire,
-                            },
-                        );
+                        let Some(matching_input) = cell_clone
+                            .connections
+                            .get(&format!("{port_name}.i"))
+                            .copied()
+                        else {
+                            continue;
+                        };
 
-                        let cell = module.cells.get_mut(&cell_name).unwrap();
-                        cell.port_directions
-                            .insert(port_name.clone(), port.direction);
-                        cell.connections.insert(port_name.clone(), new_wire);
-
-                        dirty = true;
-                    }
-
-                    let cell = self
-                        .modules
-                        .get(&module_name)
-                        .unwrap()
-                        .cells
-                        .get(&cell_name)
-                        .unwrap()
-                        .clone();
-                    for (port_name, port) in &instance.ports {
-                        if cell.connections.contains_key(port_name) {
-                            assert_eq!(
-                                *cell.port_directions.get(port_name).unwrap(),
-                                port.direction
-                            );
-
-                            if port.direction == PortDirection::Input {
-                                continue;
-                            }
-
-                            let output_wire = cell.connections.get(port_name).unwrap();
-                            if let Some(input_wire) =
-                                cell.connections.get(&format!("{port_name}.i"))
-                            {
-                                assert_eq!(
-                                    *cell.port_directions.get(&format!("{port_name}.i")).unwrap(),
-                                    PortDirection::Input
-                                );
-
-                                let module = self.modules.get_mut(&module_name).unwrap();
-                                for cell in module.cells.values_mut() {
-                                    for (connection_name, connection_wire) in
-                                        cell.connections.clone()
-                                    {
-                                        if connection_wire != *output_wire {
-                                            continue;
-                                        }
-
-                                        if *cell.port_directions.get(&connection_name).unwrap()
-                                            != PortDirection::Input
-                                        {
-                                            continue;
-                                        }
-
-                                        *cell.connections.get_mut(&connection_name).unwrap() =
-                                            *input_wire;
-                                    }
+                        for cell in module.cells.values_mut() {
+                            for (conn_name, conn) in cell.connections.clone() {
+                                if conn != cell_out_wire {
+                                    continue;
                                 }
+
+                                if *cell.port_dirs.get(&conn_name).unwrap() != PortDir::Input {
+                                    continue;
+                                }
+
+                                *cell.connections.get_mut(&conn_name).unwrap() = matching_input;
                             }
                         }
                     }
                 }
             }
 
-            if dirty && let Some(callers) = callers.get(&module_name) {
+            // Remove unused ports (clk)
+            let module = self.modules.get_mut(&module_name).unwrap();
+            let mut inputs_used = module
+                .input_ports()
+                .map(|(name, port)| (port.wire, (false, name.clone())))
+                .collect::<HashMap<_, _>>();
+            for cell in module.cells.values() {
+                for (_, wire) in cell.input_connections() {
+                    if let Some((used, _)) = inputs_used.get_mut(&wire) {
+                        *used = true;
+                    }
+                }
+            }
+
+            for (_, (used, port_name)) in inputs_used {
+                if !used {
+                    module.ports.remove(&port_name).unwrap();
+                    removed_ports
+                        .entry(module_name.clone())
+                        .and_modify(|set: &mut HashSet<String>| {
+                            set.insert(port_name.clone());
+                        })
+                        .or_insert_with(|| {
+                            let mut set = HashSet::new();
+                            set.insert(port_name.clone());
+                            set
+                        });
+                    interface_modified = true;
+                }
+            }
+
+            // Add callers to queue
+            if interface_modified && let Some(callers) = callers.get(&module_name) {
                 for caller in callers {
-                    queue.push_back((caller.clone(), self.modules.get(caller).unwrap().clone()));
+                    if queue.contains(caller) {
+                        continue;
+                    }
+
+                    queue.push_back(caller.clone());
                 }
             }
         }
     }
 
-    pub fn show(mut self) {
-        self.modules.insert(
-            "_DFF_P_".to_string(),
-            Module {
-                attributes: HashMap::new(),
-                ports: [
-                    (
-                        "Q.i".to_string(),
-                        Port {
-                            direction: PortDirection::Input,
-                            wire: Wire(0),
-                        },
-                    ),
-                    (
-                        "D".to_string(),
-                        Port {
-                            direction: PortDirection::Input,
-                            wire: Wire(1),
-                        },
-                    ),
-                    (
-                        "C".to_string(),
-                        Port {
-                            direction: PortDirection::Input,
-                            wire: Wire(2),
-                        },
-                    ),
-                    (
-                        "Q".to_string(),
-                        Port {
-                            direction: PortDirection::Output,
-                            wire: Wire(3),
-                        },
-                    ),
-                ]
-                .into_iter()
-                .collect(),
-                cells: [(
-                    "mux".to_string(),
-                    Cell {
-                        kind: "$_MUX_".to_string(),
-                        port_directions: [
-                            ("A".to_string(), PortDirection::Input),
-                            ("B".to_string(), PortDirection::Input),
-                            ("S".to_string(), PortDirection::Input),
-                            ("Y".to_string(), PortDirection::Output),
-                        ]
-                        .into_iter()
-                        .collect(),
-                        connections: [
-                            ("A".to_string(), Wire(0)),
-                            ("B".to_string(), Wire(1)),
-                            ("S".to_string(), Wire(2)),
-                            ("Y".to_string(), Wire(3)),
-                        ]
-                        .into_iter()
-                        .collect(),
-                    },
-                )]
-                .into_iter()
-                .collect(),
-            },
-        );
-
+    pub fn show(&self) {
         let mut file = File::create("processed.json").unwrap();
-        let text = serde_json::to_string_pretty(&self)
-            .unwrap()
-            .replace("$_DFF_P_", "_DFF_P_");
-        file.write_all(text.as_bytes()).unwrap();
+        file.write_all(&serde_json::to_vec_pretty(self).unwrap())
+            .unwrap();
 
         let status = Command::new("yosys")
             .arg("-p")
@@ -310,13 +290,13 @@ impl Module {
     pub fn input_ports(&self) -> impl Iterator<Item = (&String, &Port)> {
         self.ports
             .iter()
-            .filter(|(_name, port)| port.direction == PortDirection::Input)
+            .filter(|(_name, port)| port.dir == PortDir::Input)
     }
 
     pub fn output_ports(&self) -> impl Iterator<Item = (&String, &Port)> {
         self.ports
             .iter()
-            .filter(|(_name, port)| port.direction == PortDirection::Output)
+            .filter(|(_name, port)| port.dir == PortDir::Output)
     }
 }
 
@@ -348,7 +328,8 @@ impl<'de> Deserialize<'de> for Wire {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Port {
-    pub direction: PortDirection,
+    #[serde(rename = "direction")]
+    pub dir: PortDir,
 
     #[serde(rename = "bits")]
     pub wire: Wire,
@@ -356,7 +337,7 @@ pub struct Port {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum PortDirection {
+pub enum PortDir {
     Input,
     Output,
 }
@@ -365,22 +346,23 @@ pub enum PortDirection {
 pub struct Cell {
     #[serde(rename = "type")]
     pub kind: String,
-    pub port_directions: Map<String, PortDirection>,
+    #[serde(rename = "port_directions")]
+    pub port_dirs: Map<String, PortDir>,
     pub connections: Map<String, Wire>,
 }
 
 impl Cell {
     pub fn input_connections(&self) -> impl Iterator<Item = (&String, Wire)> {
-        self.port_directions
+        self.port_dirs
             .iter()
-            .filter(|(_, dir)| **dir == PortDirection::Input)
+            .filter(|(_, dir)| **dir == PortDir::Input)
             .map(|(port_name, _)| (port_name, *self.connections.get(port_name).unwrap()))
     }
 
     pub fn output_connections(&self) -> impl Iterator<Item = (&String, Wire)> {
-        self.port_directions
+        self.port_dirs
             .iter()
-            .filter(|(_, dir)| **dir == PortDirection::Output)
+            .filter(|(_, dir)| **dir == PortDir::Output)
             .map(|(port_name, _)| (port_name, *self.connections.get(port_name).unwrap()))
     }
 }

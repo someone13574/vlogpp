@@ -1,6 +1,5 @@
 use std::fs::{self, File};
 use std::io::Write;
-use std::iter::once;
 use std::process::Command;
 
 use vlogpp::lint::lint_directory;
@@ -12,7 +11,7 @@ use vlogpp::scope::global::GlobalScope;
 fn test_submod_state() {
     lint_directory("tests");
 
-    let netlist = Netlist::new("tests/submod_state.sv", false, &[]);
+    let netlist = Netlist::new("tests/submod_state.sv", true, &[]);
     let registry = Registry::default().add_netlist(netlist);
 
     let mut global_scope = GlobalScope::new(registry);
@@ -39,7 +38,6 @@ fn test_submod_state() {
         let mut inputs = sub_in_bits
             .iter()
             .chain(main_in_bits.iter())
-            .chain(once(&("clk".to_string(), '1')))
             .map(|(name, value)| {
                 (
                     top_macro.input_position(name, &global_scope).unwrap(),

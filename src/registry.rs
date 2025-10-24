@@ -288,7 +288,16 @@ impl Registry {
         }
 
         let mut scope = global_scope.new_scope();
-        let expand = Registry::eval_multiplier(scope.global, 0);
+        let variadic = scope.new_var("variadic", false, true, None);
+        let expand = scope.new_macro(Macro {
+            scope_id: scope.id,
+            name: scope.get_alias("EXPAND", false),
+            expr: Expr::Var(variadic),
+            inputs: vec![variadic],
+            variadicified_vars: None,
+            calling_split: None,
+            doc_name: None,
+        });
         let eat = Registry::empty_macro(scope.global);
 
         let prefix = scope.get_alias("IF", true);
@@ -321,6 +330,84 @@ impl Registry {
         id
     }
 
+    pub fn repeat_macro(global_scope: &mut GlobalScope, macro_id: MacroID, cont_var: &str) {
+        let r#macro = global_scope.get_macro(macro_id).clone();
+        let scope_id = r#macro.scope_id;
+        let macro_name = format!("REPEAT_{}", &r#macro.name);
+
+        let obstruct_macro = Registry::obstruct_macro(global_scope);
+        let if_macro = Registry::if_macro(global_scope);
+
+        let mut scope = global_scope.get_mut_scope(scope_id);
+
+        let mut repeat_inputs = Vec::new();
+        let mut cont_var_id = None;
+        for output in scope.local().output_names.as_ref().unwrap().clone() {
+            if let Some(var) = scope.scope().local().input_map.get(&format!("{output}.i")) {
+                repeat_inputs.push(*var);
+            } else {
+                let var = scope.new_var(&output, false, false, None);
+                repeat_inputs.push(var);
+
+                if &output == cont_var {
+                    cont_var_id = Some(var);
+                }
+            }
+        }
+
+        let mut call_inputs = Vec::new();
+        let mut passthrough = Vec::new();
+        for &input in &r#macro.inputs {
+            call_inputs.push(Expr::Var(input));
+            if !repeat_inputs.contains(&input) {
+                repeat_inputs.push(input);
+                passthrough.push(Expr::Var(input));
+            }
+        }
+
+        let indirect_macro = scope.new_macro(Macro {
+            scope_id: scope.id,
+            name: scope.get_alias(&format!("{macro_name}_INDIRECT"), false),
+            expr: Expr::List(Vec::new(), ""),
+            inputs: Vec::new(),
+            variadicified_vars: None,
+            calling_split: None,
+            doc_name: None,
+        });
+
+        let repeat_macro = scope.new_macro(Macro {
+            scope_id: scope.id,
+            name: scope.get_alias(&macro_name, false),
+            expr: Expr::Call {
+                r#macro: Box::new(Expr::Call {
+                    r#macro: Box::new(Expr::Macro(if_macro)),
+                    args: vec![Expr::Var(cont_var_id.unwrap())],
+                }),
+                args: vec![Expr::Call {
+                    r#macro: Box::new(Expr::Call {
+                        r#macro: Box::new(Expr::Call {
+                            r#macro: Box::new(Expr::Macro(obstruct_macro)),
+                            args: vec![Expr::Macro(indirect_macro)],
+                        }),
+                        args: vec![],
+                    }),
+                    args: std::iter::once(Expr::Call {
+                        r#macro: Box::new(Expr::Macro(macro_id)),
+                        args: call_inputs,
+                    })
+                    .chain(passthrough.into_iter())
+                    .collect(),
+                }],
+            },
+            inputs: repeat_inputs,
+            variadicified_vars: None,
+            calling_split: None,
+            doc_name: None,
+        });
+
+        scope.get_mut_macro(indirect_macro).expr = Expr::Macro(repeat_macro);
+    }
+
     fn name_available(&self, name: &str) -> bool {
         !self
             .luts
@@ -337,6 +424,5 @@ impl Default for Registry {
             .register_lut(Lut::or())
             .register_lut(Lut::and())
             .register_lut(Lut::xor())
-            .register_lut(Lut::dff_p())
     }
 }

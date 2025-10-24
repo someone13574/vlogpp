@@ -11,6 +11,7 @@ use crate::scope::{MutScope, Scope};
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct MacroID(pub usize);
 
+#[derive(Clone)]
 pub struct Macro {
     pub scope_id: LocalScopeID,
 

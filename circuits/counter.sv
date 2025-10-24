@@ -2,7 +2,8 @@
 
 module counter (
     input var logic clk,
-    output var logic [3:0] out
+    output var logic [3:0] out,
+    output var logic cont
 );
 
     logic [3:0] next;
@@ -13,6 +14,10 @@ module counter (
 
     always_ff @(posedge clk) begin
         out <= next;
+    end
+
+    always_comb begin
+        cont = next != 0;
     end
 
 endmodule
