@@ -69,7 +69,7 @@ impl Netlist {
         let mut removed_ports = HashMap::new();
 
         while let Some(module_name) = queue.pop_back() {
-            let mut next_wire = Wire(0);
+            let mut next_wire_id = 0;
             for wire in self
                 .modules
                 .get(&module_name)
@@ -86,8 +86,10 @@ impl Netlist {
                         .map(|port| &port.wire),
                 )
             {
-                if wire.0 >= next_wire.0 {
-                    next_wire.0 = wire.0 + 1;
+                let Wire::Wire(wire) = *wire else { continue };
+
+                if wire >= next_wire_id {
+                    next_wire_id = wire + 1;
                 }
             }
 
@@ -155,8 +157,8 @@ impl Netlist {
                             }
                         } else if !cell.connections.contains_key(submod_port_name) {
                             // Port doesn't exist for the module or the cell
-                            let new_wire = next_wire;
-                            next_wire.0 += 1;
+                            let new_wire = Wire::Wire(next_wire_id);
+                            next_wire_id += 1;
 
                             assert!(
                                 cell.connections
@@ -301,14 +303,22 @@ impl Module {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct Wire(pub usize);
+pub enum Wire {
+    Wire(usize),
+    Const(bool),
+}
 
 impl Serialize for Wire {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        serializer.collect_seq(std::iter::once(self.0))
+        match self {
+            Wire::Wire(id) => serializer.collect_seq(std::iter::once(*id)),
+            Wire::Const(constant) => {
+                serializer.collect_seq(std::iter::once(if *constant { "1" } else { "0" }))
+            }
+        }
     }
 }
 
@@ -317,11 +327,32 @@ impl<'de> Deserialize<'de> for Wire {
     where
         D: serde::Deserializer<'de>,
     {
-        let vec = Vec::<usize>::deserialize(deserializer)?;
-        if vec.len() == 1 {
-            Ok(Wire(vec.into_iter().next().unwrap()))
-        } else {
-            Err(serde::de::Error::custom("Yosys input must be fully split"))
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Item {
+            Num(usize),
+            Str(String),
+        }
+
+        let vec = Vec::<Item>::deserialize(deserializer).map_err(serde::de::Error::custom)?;
+        if vec.len() != 1 {
+            return Err(serde::de::Error::custom("Yosys input must be fully split"));
+        }
+
+        match vec.into_iter().next().unwrap() {
+            Item::Num(n) => Ok(Wire::Wire(n)),
+            Item::Str(s) => {
+                match s.as_str() {
+                    "0" => Ok(Wire::Const(false)),
+                    "1" => Ok(Wire::Const(true)),
+                    other => {
+                        Err(serde::de::Error::custom(format!(
+                            "unexpected string for constant: {}",
+                            other
+                        )))
+                    }
+                }
+            }
         }
     }
 }

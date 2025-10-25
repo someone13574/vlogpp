@@ -89,7 +89,7 @@ impl Expr {
         match self {
             Expr::Var(var_id) => scope.get_var(*var_id).expr_text().to_string(),
             Expr::Macro(macro_id) => scope.get_macro(*macro_id).name.magenta().to_string(),
-            Expr::Text(text) => text.magenta().to_string(),
+            Expr::Text(text) => text.green().to_string(),
             Expr::List(exprs, sep) => {
                 exprs
                     .iter()

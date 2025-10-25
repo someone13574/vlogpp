@@ -96,4 +96,13 @@ impl Lut {
             outputs: &[false, true, true, false],
         }
     }
+
+    pub fn mux() -> Self {
+        Self {
+            name: "$_MUX_",
+            input_names: &["S", "A", "B"],
+            output_name: "Y",
+            outputs: &[false, false, true, true, false, true, false, true],
+        }
+    }
 }

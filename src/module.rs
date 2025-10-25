@@ -334,9 +334,8 @@ fn consumer_counts(module: &Module) -> Map<Wire, WireInfo> {
     consumer_counts
         .into_iter()
         .map(|(wire, count)| {
-            (
-                wire,
-                WireInfo {
+            {
+                let mut wire_info = WireInfo {
                     input_var: None,
                     expr: None,
                     downstream_expr: None,
@@ -346,8 +345,24 @@ fn consumer_counts(module: &Module) -> Map<Wire, WireInfo> {
                     split_idx_ub: None,
                     consumers: count,
                     input_wires: Set::new(),
-                },
-            )
+                };
+
+                match wire {
+                    Wire::Const(constant) => {
+                        wire_info.expr = Some(Expr::Text(if constant {
+                            "1".to_string()
+                        } else {
+                            "0".to_string()
+                        }));
+                        wire_info.split_idx_lb = Some(0);
+                        wire_info.split_idx_ub = Some(0); // TODO: Not this
+                        wire_info.split_delta = Some(0);
+                    }
+                    Wire::Wire(_) => {}
+                }
+
+                (wire, wire_info)
+            }
         })
         .collect()
 }

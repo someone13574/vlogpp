@@ -11,7 +11,7 @@ use vlogpp::scope::global::GlobalScope;
 fn test_submod_state() {
     lint_directory("tests");
 
-    let netlist = Netlist::new("tests/submod_state.sv", true, &[]);
+    let netlist = Netlist::new("tests/submod_state.sv", false, &[]);
     let registry = Registry::default().add_netlist(netlist);
 
     let mut global_scope = GlobalScope::new(registry);

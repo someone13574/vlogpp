@@ -424,5 +424,6 @@ impl Default for Registry {
             .register_lut(Lut::or())
             .register_lut(Lut::and())
             .register_lut(Lut::xor())
+            .register_lut(Lut::mux())
     }
 }
