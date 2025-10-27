@@ -7,6 +7,9 @@ pub mod netlist;
 pub mod registry;
 pub mod scope;
 
+#[cfg(feature = "sat")]
+pub mod sat;
+
 #[cfg(not(feature = "obfuscate"))]
 pub type Map<K, V> = ordermap::OrderMap<K, V>;
 #[cfg(not(feature = "obfuscate"))]

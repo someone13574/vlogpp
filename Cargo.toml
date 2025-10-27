@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["obfuscate"]
+# default = ["obfuscate"]
+default = ["sat"]
 obfuscate = ["dep:rand"]
+sat = ["dep:rustsat", "dep:rustsat-glucose", "dep:rand"]
 
 [dependencies]
 codespan-reporting = "0.13.0"
@@ -14,6 +16,8 @@ delegate = "0.13.4"
 indoc = "2.0.6"
 ordermap = { version = "0.5.12", features = ["serde"] }
 rand = { version = "0.9.2", optional = true }
+rustsat = { version = "0.7.4", optional = true }
+rustsat-glucose = { version = "0.7.4", optional = true }
 serde = { version = "1.0.228", features = ["serde_derive"] }
 serde_json = "1.0.145"
 strip-ansi-escapes = "0.2.1"
